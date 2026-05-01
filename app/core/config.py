@@ -1,5 +1,6 @@
 import json
 from typing import List
+from pydantic import computed_field
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -10,6 +11,15 @@ class Settings(BaseSettings):
     version: str = "1.0.0"
 
     CORS_ORIGINS: List[str]
+
+    # ------------------------------
+    # Database Configuration
+    # ------------------------------
+    DB_HOST: str
+    DB_PORT: int
+    DB_USER: str
+    DB_PASSWORD: str
+    DB_NAME: str
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -23,5 +33,18 @@ class Settings(BaseSettings):
         if isinstance(v, str):
             return json.loads(v)
         return v
+
+    # ------------------------------
+    # Database Connection URL
+    # ------------------------------
+    @computed_field
+    @property
+    def DATABASE_URL(self) -> str:
+        return (
+            f"postgresql+psycopg2://"
+            f"{self.DB_USER}:{self.DB_PASSWORD}"
+            f"@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"
+        )
+
 
 settings = Settings()
