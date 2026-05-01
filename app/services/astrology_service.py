@@ -18,8 +18,8 @@ class AstrologyService:
     # ======================================================== #
     """ Initialise le moteur astrologique et les constantes. """
     def __init__(self):
-        swe.set_ephe_path('/usr/share/ephe') 
-        
+        swe.set_ephe_path('/usr/share/ephe')
+
         self.planets = {
             "Soleil": swe.SUN,
             "Lune": swe.MOON,
@@ -42,18 +42,32 @@ class AstrologyService:
     # ==================================================================== #
     """ Convertit une datetime en Julian Day. Returns: float: Julian Day """
     def _get_date_to_jd(self, dt: datetime) -> float:
-        return swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute/60.0)
+        return swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60.0)
+    
+    
+    # ================================================================ #
+    """ Swiss Ephemeris returns: ([lon, lat, dist, speed], flag) """
+    def _extract_lon(self, result):
+        if isinstance(result, tuple):
+            result = result[0]
+
+        if isinstance(result, (list, tuple)):
+            return float(result[0])
+
+        return float(result)
     
     
     # ============================================================ #
     """ Retourne le signe astrologique à partir d'une longitude. """
     def _get_sign(self, lon: float) -> str:
-        return self.signs[int(lon / 30)]
+        lon = float(lon)
+        return self.signs[int(lon // 30)]
     
     
     # ==================================== #
     """ Formate une position planétaire. """
-    def _format_position(self, lon: float) -> PlanetPosition:
+    def _format_position(self, lon: float):
+        lon = float(lon)
         return {
             "lon": lon,
             "sign": self._get_sign(lon),
@@ -63,7 +77,7 @@ class AstrologyService:
 
     # =============================================== #
     """ Calcule les aspects majeurs entre planètes. """
-    def _calculate_aspects(self, planets: Dict[str, PlanetPosition]) -> List[Aspect]:
+    def _calculate_aspects(self, planets: Dict[str, Any]):
         major_aspects = {
             0: "Conjonction",
             60: "Sextile",
@@ -72,7 +86,7 @@ class AstrologyService:
             180: "Opposition"
         }
 
-        results: List[Aspect] = []
+        results = []
         names = list(planets.keys())
 
         for i in range(len(names)):
@@ -80,16 +94,16 @@ class AstrologyService:
                 p1, p2 = names[i], names[j]
 
                 diff = abs(planets[p1]["lon"] - planets[p2]["lon"])
-                if diff > 180:
-                    diff = 360 - diff
+                diff = diff if diff <= 180 else 360 - diff
 
-                for angle, aspect_name in major_aspects.items():
+                for angle, name in major_aspects.items():
                     orb = abs(diff - angle)
+
                     if orb <= 5:
                         results.append({
                             "p1": p1,
                             "p2": p2,
-                            "type": aspect_name,
+                            "type": name,
                             "orb": round(orb, 2)
                         })
 
@@ -98,27 +112,33 @@ class AstrologyService:
 
     # ================================================================ #
     """ Génère les transits des 12 prochains mois (planètes lentes). """
-    def _calculate_future_transits(self) -> List[Transit]:
+    def _calculate_future_transits(self):
         slow_planets = {
             "Jupiter": swe.JUPITER,
             "Saturne": swe.SATURN,
             "Pluton": swe.PLUTO
         }
 
-        forecast: List[Transit] = []
+        forecast = []
         now = datetime.utcnow()
 
         for i in range(1, 13):
-            future_date = now + timedelta(days=i * 30)
-            jd = self._get_date_to_jd(future_date)
+            future = now + timedelta(days=i * 30)
+            jd = self._get_date_to_jd(future)
 
             positions = {}
-            for name, p_id in slow_planets.items():
-                lon = swe.calc_ut(jd, p_id)[0]
-                positions[name] = self._get_sign(lon)
+
+            for name, pid in slow_planets.items():
+                result = swe.calc_ut(jd, pid)
+                lon = self._extract_lon(result)
+
+                positions[name] = {
+                    "lon": lon,
+                    "sign": self._get_sign(lon)
+                }
 
             forecast.append({
-                "month": future_date.strftime("%B %Y"),
+                "month": future.strftime("%B %Y"),
                 "positions": positions
             })
 
@@ -127,41 +147,44 @@ class AstrologyService:
 
     # =============================================== #
     """ Génère le thème natal complet + prévisions. """
-    def get_full_chart(self, birth_date: datetime, lat: float, lon: float) -> FullChart:
+    def get_full_chart(self, birth_date: datetime, lat: float, lon: float):
+
         jd = self._get_date_to_jd(birth_date)
 
-        # ================= PLANÈTES ================= #
-        planet_data: Dict[str, PlanetPosition] = {}
+        # ================= PLANETS =================
+        planet_data = {}
 
-        for name, p_id in self.planets.items():
-            res = swe.calc_ut(jd, p_id)[0]
-            planet_data[name] = self._format_position(res)
+        for name, pid in self.planets.items():
+            result = swe.calc_ut(jd, pid)
+            lon_val = self._extract_lon(result)
 
-        # ================= NOEUDS ================= #
-        nodes = swe.calc_ut(jd, swe.TRUE_NODE)[0]
+            planet_data[name] = self._format_position(lon_val)
+
+        # ================= NODES =================
+        nodes_result = swe.calc_ut(jd, swe.TRUE_NODE)
+        nodes = self._extract_lon(nodes_result)
 
         planet_data["Noeud Nord"] = self._format_position(nodes)
+        planet_data["Noeud Sud"] = self._format_position((nodes + 180) % 360)
 
-        south_node = (nodes + 180) % 360
-        planet_data["Noeud Sud"] = self._format_position(south_node)
-
-        # ================= MAISONS ================= #
+        # ================= HOUSES =================
         houses, ascmc = swe.houses(jd, lat, lon, b'P')
 
-        houses_data: Dict[int, House] = {
+        houses_data = {
             i + 1: {
-                "lon": h,
-                "sign": self._get_sign(h)
+                "lon": float(h),
+                "sign": self._get_sign(h),
+                "deg": round(float(h) % 30, 2)
             }
             for i, h in enumerate(houses)
         }
 
         ascendant = self._format_position(ascmc[0])
 
-        # ================= ASPECTS ================= #
+        # ================= ASPECTS =================
         aspects = self._calculate_aspects(planet_data)
 
-        # ================= TRANSITS ================= #
+        # ================= TRANSITS =================
         transits = self._calculate_future_transits()
 
         return {
@@ -173,3 +196,4 @@ class AstrologyService:
             },
             "forecast": transits
         }
+

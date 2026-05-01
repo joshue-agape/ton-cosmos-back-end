@@ -8,7 +8,7 @@ class PDFService:
     # =============================================== #
     """ Chargeur de templates pour le design du PDF """
     def __init__(self):
-        template_path = os.path.join(os.path.dirname(__file__), "../templates/reports")
+        template_path = os.path.join(os.path.dirname(__file__), "../templates")
         self.env = Environment(loader=FileSystemLoader(template_path))
 
 

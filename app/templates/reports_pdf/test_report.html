@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Rapport Astrologique</title>
+
+    <style>
+        @page {
+            size: A4;
+            margin: 2cm;
+        }
+
+        body {
+            font-family: "Arial", sans-serif;
+            background: #ffffff;
+            color: #222;
+            line-height: 1.6;
+        }
+
+        .header {
+            text-align: center;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #6a0dad;
+        }
+
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            color: #6a0dad;
+            letter-spacing: 1px;
+        }
+
+        .header p {
+            margin: 5px 0 0;
+            font-size: 14px;
+            color: #666;
+        }
+
+        .section {
+            margin-top: 25px;
+            padding: 20px;
+            border-radius: 10px;
+            background: #f8f7fb;
+            border: 1px solid #eee;
+        }
+
+        .section-title {
+            font-size: 16px;
+            font-weight: bold;
+            color: #6a0dad;
+            margin-bottom: 10px;
+        }
+
+        .grid {
+            display: block;
+        }
+
+        .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px dashed #ddd;
+        }
+
+        .label {
+            font-weight: bold;
+            color: #444;
+        }
+
+        .value {
+            color: #222;
+        }
+
+        .message {
+            font-size: 14px;
+            padding: 10px;
+            background: #ffffff;
+            border-left: 4px solid #6a0dad;
+            margin-top: 10px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 6px;
+            background: #6a0dad;
+            color: white;
+            font-size: 12px;
+        }
+
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 11px;
+            color: #888;
+            border-top: 1px solid #eee;
+            padding-top: 10px;
+        }
+    </style>
+</head>
+
+<body>
+
+<div class="header">
+    <h1>Rapport Astrologique</h1>
+    <p>Analyse personnalisée de votre thème natal</p>
+</div>
+
+<div class="section">
+    <div class="section-title">Informations personnelles</div>
+
+    <div class="row">
+        <div class="label">Nom</div>
+        <div class="value">{{ name }}</div>
+    </div>
+
+    <div class="row">
+        <div class="label">Date de naissance</div>
+        <div class="value">{{ birth_date }}</div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">Analyse des signes</div>
+
+    <div class="row">
+        <div class="label">Signe solaire</div>
+        <div class="value"><span class="badge">{{ sun_sign }}</span></div>
+    </div>
+
+    <div class="row">
+        <div class="label">Signe lunaire</div>
+        <div class="value"><span class="badge">{{ moon_sign }}</span></div>
+    </div>
+</div>
+
+<div class="section">
+    <div class="section-title">🔮 Interprétation</div>
+    <div class="message">
+        {{ message }}
+    </div>
+</div>
+
+<div class="footer">
+    Généré automatiquement le {{ generated_at }} • Astro Report System
+</div>
+
+</body>
+</html>

@@ -1,7 +1,9 @@
+import os
 import time
 from typing import List
 from sqlalchemy.orm import Session
 from app.database.deps import get_db
+from fastapi.responses import FileResponse
 from fastapi import APIRouter, Depends, status
 from app.repositories.order_repository import OrderRepository
 from app.repositories.report_repository import ReportRepository
@@ -18,7 +20,6 @@ router = APIRouter()
 stripe_service = StripeService()
 astrology_service = AstrologyService()
 pdf_service = PDFService()
-
 
 
 # ================================================================================= #
@@ -40,17 +41,23 @@ def create_order(body: OrderPayload, db: Session = Depends(get_db)):
         "latitude": body.latitude,
         "longitude": body.longitude,
         "plan_type": body.plan_type,
-        "stripe_session_id": body.stripe_session_id,
+        "stripe_session_id": body.stripe_session_id,    # cs_test_a1ukssvNyZed6Z5t7ksf0eLZbKmKygU4jjAU9sfp4Xygo1my9rc1fXLiLT
         "amount_total": amount,
         "status": OrderStatus.PENDING_PAYMENT
     })
     
     # gérer heure inconnue
     birth_datetime = body.birth_date
-    if body.birth_time:
+    
+    if birth_datetime.tzinfo is not None:
+        birth_datetime = birth_datetime.replace(tzinfo=None)
+
+    if body.birth_time is not None:
         birth_datetime = birth_datetime.replace(
             hour=body.birth_time.hour,
-            minute=body.birth_time.minute
+            minute=body.birth_time.minute,
+            second=body.birth_time.second,
+            microsecond=body.birth_time.microsecond
         )
 
     chart = astrology_service.get_full_chart(
@@ -62,7 +69,8 @@ def create_order(body: OrderPayload, db: Session = Depends(get_db)):
     report = report_repo.create(order.id)
     report_repo.update_content(report.id, astral_data=chart, ai_content={})
     
-    output_filename = f"report_{order.id}_{body.full_name.replace(' ', '_')}.pdf"
+    user_id_dummy = datetime.now().strftime("%Y%m%d%H%M%S")
+    output_filename = f"report_{order.id}_{body.full_name.replace(' ', '_')}_{user_id_dummy}.pdf"
     pdf_path = pdf_service.generate_astrological_report(
         data={"full_name": body.full_name, "birth_chart": chart, "ai_content": {}},
         output_filename=output_filename
@@ -90,3 +98,30 @@ def get_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     repo = OrderRepository(db)
     return repo.get_all(skip=skip, limit=limit)
 
+
+# ================================================================ #
+""" Télécharge le rapport PDF associé à une commande via son ID. """
+@router.get("/download/{order_id}")
+def download_report(order_id: int, db: Session = Depends(get_db)):
+    order_repo = OrderRepository(db)
+    report_repo = ReportRepository(db)
+
+    order = order_repo.get_by_id(order_id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Commande introuvable")
+
+    report = report_repo.get_by_order_id(order_id)
+    if not report or not report.pdf_url:
+        raise HTTPException(status_code=404, detail="PDF non disponible")
+
+    file_path = report.pdf_url
+
+    if not os.path.exists(file_path):
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+
+    return FileResponse(
+        path=file_path,
+        filename=report.pdf_name,
+        media_type="application/pdf"
+    )
+    
