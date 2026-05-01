@@ -16,6 +16,23 @@ class OrderRepository:
         self.db.commit()
         self.db.refresh(db_order)
         return db_order
+    
+    
+    # ================================================== #
+    """ Mettre a jour une commande en base de données. """
+    def update(self, order_id: int, order_data) -> Order:
+        db_order = self.db.query(Order).filter(Order.id == order_id).first()
+
+        if not db_order:
+            return None
+
+        for key, value in order_data.dict(exclude_unset=True).items():
+            setattr(db_order, key, value)
+
+        self.db.commit()
+        self.db.refresh(db_order)
+
+        return db_order
 
 
     # ============================================ #

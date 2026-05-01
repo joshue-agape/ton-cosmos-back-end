@@ -1,6 +1,6 @@
 import os
 import time
-from typing import List
+import traceback
 from sqlalchemy.orm import Session
 from app.database.deps import get_db
 from fastapi.responses import FileResponse
@@ -26,10 +26,7 @@ pdf_service = PDFService()
 """ Crée une nouvelle commande après la saisie du formulaire sur la landing page. """
 @router.post("/create", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 def create_order(body: OrderPayload, db: Session = Depends(get_db)):
-    start_time = time.perf_counter()
     order_repo = OrderRepository(db)
-    report_repo = ReportRepository(db)
-    
     amount = 990 if body.plan_type == PlanType.ESSENTIEL else 1990
     
     order = order_repo.create({
@@ -41,59 +38,99 @@ def create_order(body: OrderPayload, db: Session = Depends(get_db)):
         "latitude": body.latitude,
         "longitude": body.longitude,
         "plan_type": body.plan_type,
-        "stripe_session_id": body.stripe_session_id,    # cs_test_a1ukssvNyZed6Z5t7ksf0eLZbKmKygU4jjAU9sfp4Xygo1my9rc1fXLiLT
         "amount_total": amount,
         "status": OrderStatus.PENDING_PAYMENT
     })
     
-    # gérer heure inconnue
-    birth_datetime = body.birth_date
+    return order
+
+
+# ================================================================================= #
+""" Crée une nouvelle commande après la saisie du formulaire sur la landing page. """
+@router.put("/paid-success")
+def paid_success(body: PaidPayload, db: Session = Depends(get_db)):
+    start_time = time.perf_counter()
+    order_repo = OrderRepository(db)
+    report_repo = ReportRepository(db)
     
+    order = order_repo.get_by_id(body.id)
+    if not order:
+        raise HTTPException(status_code=404, detail="Order not found")
+    
+    order.stripe_session_id = body.session_id
+    order.status = OrderStatus.PROCESSING
+    order_repo.update(order.id, order)
+    
+    birth_datetime = order.birth_date
+
     if birth_datetime.tzinfo is not None:
         birth_datetime = birth_datetime.replace(tzinfo=None)
 
-    if body.birth_time is not None:
+    if order.birth_time:
         birth_datetime = birth_datetime.replace(
-            hour=body.birth_time.hour,
-            minute=body.birth_time.minute,
-            second=body.birth_time.second,
-            microsecond=body.birth_time.microsecond
+            hour=order.birth_time.hour,
+            minute=order.birth_time.minute,
+            second=order.birth_time.second,
+            microsecond=0
         )
 
     chart = astrology_service.get_full_chart(
         birth_datetime,
-        body.latitude,
-        body.longitude
+        order.latitude,
+        order.longitude
     )
     
     report = report_repo.create(order.id)
-    report_repo.update_content(report.id, astral_data=chart, ai_content={})
-    
-    user_id_dummy = datetime.now().strftime("%Y%m%d%H%M%S")
-    output_filename = f"report_{order.id}_{body.full_name.replace(' ', '_')}_{user_id_dummy}.pdf"
-    pdf_path = pdf_service.generate_astrological_report(
-        data={"full_name": body.full_name, "birth_chart": chart, "ai_content": {}},
-        output_filename=output_filename
-    )
-    end_time = time.perf_counter()
-    execution_duration = round(end_time - start_time, 2)
-    
-    report_repo.finalize_pdf(
-        report_id=report.id,
-        pdf_url=pdf_path,
-        pdf_name=output_filename,
-        duration=execution_duration
-    )
-    
-    order_repo.update_status(order.id, OrderStatus.PROCESSING)
-    db.refresh(order)
 
+    report_repo.update_content(
+        report.id,
+        astral_data=chart,
+        ai_content={}
+    )
+    
+    safe_name = (order.full_name or "user").replace(" ", "-")
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+
+    output_filename = f"report-{safe_name}-{timestamp}.pdf"
+    
+    status = OrderStatus.PROCESSING
+    
+    try:
+        pdf_path = pdf_service.generate_astrological_report(
+            template_name="test_report",
+            data={
+                "full_name": order.full_name,
+                "birth_chart": chart,
+                "ai_content": {}
+            },
+            output_filename=output_filename
+        )
+        
+        execution_duration = round(time.perf_counter() - start_time, 2)
+        
+        report_repo.finalize_pdf(
+            report_id=report.id,
+            pdf_url=pdf_path,
+            pdf_name=output_filename,
+            duration=execution_duration
+        )
+        status = OrderStatus.COMPLETED
+        
+    except Exception as e:
+        print("PDF GENERATION ERROR:", str(e))
+        print(traceback.format_exc())
+
+        status = OrderStatus.FAILED
+    
+    order_repo.update_status(order.id, status)
+    db.refresh(order)
+    
     return order
 
 
 # ==================================================================== #
 """ Récupère toutes les commandes pour le Dashboard Admin de Joseph. """
-@router.get("/", response_model=List[OrderResponse])
+@router.get("/find-all")
 def get_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     repo = OrderRepository(db)
     return repo.get_all(skip=skip, limit=limit)

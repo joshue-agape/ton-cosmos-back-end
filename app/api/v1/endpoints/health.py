@@ -131,12 +131,12 @@ class CheckoutRequest(BaseModel):
 
 @router.post("/create-checkout-session")
 def test_create_checkout_session(body: CheckoutRequest):
-    user_id = datetime.now().strftime("%Y%m%d%H%M%S")
+    random_id = int(time.time() * 1000)
     try:
         session = stripe_service.create_checkout_session(
             plan_type=body.plan_type,
             amount_total=body.amount_total,
-            user_id=user_id
+            order_id=random_id
         )
 
         return {
