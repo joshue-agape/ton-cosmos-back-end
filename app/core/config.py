@@ -20,6 +20,19 @@ class Settings(BaseSettings):
     DB_USER: str
     DB_PASSWORD: str
     DB_NAME: str
+    
+    ADMIN_EMAIL: str
+    ADMIN_PASSWORD: str
+    
+    MAIL_HOST: str
+    MAIL_PORT: int
+    MAIL_USERNAME: str
+    MAIL_PASSWORD: str
+    MAIL_FROM: str
+    MAIL_FROM_NAME: str
+    
+    STRIPE_SECRET_KEY: str
+    STRIPE_WEBHOOK_SECRET: str
 
     model_config = SettingsConfigDict(
         env_file=".env",

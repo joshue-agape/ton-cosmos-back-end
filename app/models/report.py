@@ -3,11 +3,12 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.base import Base
 
+# Rapport astrologique généré.
 class AstrologicalReport(Base):
     __tablename__ = "astrological_reports"
     
     id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False)
+    order_id = Column(Integer, ForeignKey("orders.id", ondelete="CASCADE"), nullable=False, unique=True)
     
     # Données générées
     astral_data_json = Column(JSON, nullable=True)

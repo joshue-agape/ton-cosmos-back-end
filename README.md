@@ -22,3 +22,8 @@ alembic revision --autogenerate -m "init"
 alembic upgrade head
 ```
 
+##### Apply the seeder
+
+```bash
+python -m app.seed
+```

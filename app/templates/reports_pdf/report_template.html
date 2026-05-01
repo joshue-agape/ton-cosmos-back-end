@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        @page { size: A4; margin: 2cm; }
+        body { font-family: 'serif'; color: #1a1a2e; }
+        .header { text-align: center; border-bottom: 2px solid #e94560; }
+        .section { margin-top: 30px; }
+        h1 { color: #e94560; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Votre Thème Natal - Ton Cosmos</h1>
+        <p>Généré le {{ generated_at }} pour {{ full_name }}</p>
+    </div>
+
+    <div class="section">
+        <h2>Votre Signe Solaire : {{ birth_chart.planets.Soleil.sign }}</h2>
+        <p>{{ ai_content.sun_interpretation }}</p>
+    </div>
+</body>
+</html>

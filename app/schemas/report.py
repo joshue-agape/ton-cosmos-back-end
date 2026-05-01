@@ -1,0 +1,12 @@
+from pydantic import BaseModel, Field
+from typing import Optional, Any, Dict
+
+class ReportCreate(BaseModel):
+    order_id: int
+    generation_duration: float = Field(..., description="Durée de génération en secondes")
+    
+    astral_data_json: Dict[str, Any] = Field(default_factory=dict)
+    ai_content_json: Dict[str, Any] = Field(default_factory=dict)
+
+    class Config:
+        from_attributes = True
