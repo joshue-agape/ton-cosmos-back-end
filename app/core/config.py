@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     version: str = "1.0.0"
 
     CORS_ORIGINS: List[str]
+    FRONTEND_URL: str
 
     # ------------------------------
     # Database Configuration

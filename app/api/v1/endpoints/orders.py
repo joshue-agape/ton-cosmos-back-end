@@ -20,6 +20,7 @@ astrology_service = AstrologyService()
 pdf_service = PDFService()
 
 
+
 # ================================================================================= #
 """ Crée une nouvelle commande après la saisie du formulaire sur la landing page. """
 @router.post("/create", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
