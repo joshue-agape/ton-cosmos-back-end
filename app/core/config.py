@@ -12,6 +12,7 @@ class Settings(BaseSettings):
 
     CORS_ORIGINS: List[str]
     FRONTEND_URL: str
+    JWT_SECRET_KEY: str
 
     # ------------------------------
     # Database Configuration

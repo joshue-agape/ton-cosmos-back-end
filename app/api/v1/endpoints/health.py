@@ -119,39 +119,3 @@ def get_pdf(pdf_name: str):
         media_type="application/pdf",
         filename=pdf_name
     )
-    
-
-# ===================== #
-#  TEST SERVICE STRIPE  #
-#====================== #
-class CheckoutRequest(BaseModel):
-    plan_type: str
-    amount_total: int
-    
-
-@router.post("/create-checkout-session")
-def test_create_checkout_session(body: CheckoutRequest):
-    random_id = int(time.time() * 1000)
-    try:
-        session = stripe_service.create_checkout_session(
-            plan_type=body.plan_type,
-            amount_total=body.amount_total,
-            order_id=random_id
-        )
-
-        return {
-            "success": True,
-            "checkout_url": session.url,
-            "session_id": session.id
-        }
-
-    except HTTPException as e:
-        raise e
-
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
-        
-    
