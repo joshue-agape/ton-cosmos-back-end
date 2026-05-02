@@ -23,6 +23,45 @@ class EmailService:
 
         except Exception as e:
             raise Exception(f"Template rendering error: {str(e)}")
+        
+        
+    async def send_email_with_attachment(self, to: str, subject: str, template_name: str, data: dict, attachment_path: str = None):
+        try:
+            html_content = self.render_template(template_name, data)
+
+            message = EmailMessage()
+            message["From"] = f"{settings.MAIL_FROM_NAME} <{settings.MAIL_FROM}>"
+            message["To"] = to
+            message["Subject"] = subject
+
+            message.set_content("Veuillez trouver ci-joint votre rapport astrologique Ton Cosmos.")
+            message.add_alternative(html_content, subtype="html")
+
+            if attachment_path:
+                with open(attachment_path, "rb") as f:
+                    file_data = f.read()
+                    file_name = attachment_path.split("/")[-1]
+                
+                message.add_attachment(
+                    file_data,
+                    maintype="application",
+                    subtype="pdf",
+                    filename=file_name
+                )
+
+            await aiosmtplib.send(
+                message,
+                hostname=settings.MAIL_HOST,
+                port=settings.MAIL_PORT,
+                username=settings.MAIL_USERNAME,
+                password=settings.MAIL_PASSWORD,
+                start_tls=True,
+            )
+            return {"success": True, "message": "Sent with attachment"}
+
+        except Exception as e:
+            print(f"SMTP Error: {e}")
+            return {"success": False, "message": str(e)}
 
 
     async def send_email(self, to: str, subject: str, template_name: str, data: dict):

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+        @page {
+            size: A4;
+            margin: 0;
+            @bottom-right {
+                content: "Page " counter(page);
+                font-family: 'Cormorant Garamond', serif;
+                font-size: 10pt;
+                color: #D4AF37;
+                padding-right: 2cm;
+                padding-bottom: 1cm;
+            }
+            @bottom-left {
+                content: "Ton Cosmos — Rapport Astral";
+                font-family: 'Cormorant Garamond', serif;
+                font-size: 10pt;
+                color: #D4AF37;
+                padding-left: 2cm;
+                padding-bottom: 1cm;
+            }
+        }
+
+        /* --- Couleurs & Typographie --- */
+        :root {
+            --violet-deep: #1A0B2E;
+            --gold: #D4AF37;
+            --off-white: #FAF9F6;
+        }
+
+        body {
+            font-family: 'Cormorant Garamond', serif;
+            background-color: var(--off-white);
+            color: var(--violet-deep);
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* --- Page de Couverture --- */
+        .cover-page {
+            height: 297mm;
+            width: 210mm;
+            background-color: var(--violet-deep);
+            color: var(--gold);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            page-break-after: always;
+        }
+
+        .cover-title {
+            font-size: 48pt;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+            letter-spacing: 5px;
+        }
+
+        .cover-subtitle {
+            font-size: 20pt;
+            font-style: italic;
+            border-top: 1px solid var(--gold);
+            border-bottom: 1px solid var(--gold);
+            display: inline-block;
+            padding: 10px 40px;
+            margin-top: 20px;
+        }
+
+        .user-info {
+            margin-top: 100px;
+            font-size: 16pt;
+            color: var(--off-white);
+        }
+
+        /* --- Contenu Global --- */
+        .content-wrapper {
+            padding: 2cm;
+        }
+
+        .section {
+            page-break-inside: avoid;
+            margin-bottom: 40px;
+            text-align: justify;
+        }
+
+        h1, h2, h3 {
+            color: var(--violet-deep);
+            border-bottom: 1px solid var(--gold);
+            padding-bottom: 5px;
+        }
+
+        .ornament {
+            text-align: center;
+            color: var(--gold);
+            font-size: 24pt;
+            margin: 30px 0;
+        }
+
+        /* --- La Roue Astrale --- */
+        .chart-container {
+            text-align: center;
+            margin: 40px 0;
+            page-break-inside: avoid;
+        }
+
+        .chart-placeholder {
+            width: 15cm;
+            height: 15cm;
+            border: 2px solid var(--gold);
+            border-radius: 50%;
+            margin: auto;
+        }
+
+    </style>
+</head>
+<body>
+    <!-- Page de Couverture -->
+    <div class="cover-page">
+        <div class="cover-title">Ton Cosmos</div>
+        <div class="cover-subtitle">Ton Rapport Astral Premium</div>
+        
+        <div class="user-info">
+            <p>Préparé pour <strong>{{ full_name }}</strong></p>
+            <p>Né(e) le {{ birth_date }} à {{ birth_time }}</p>
+            <p>Signe Solaire : {{ birth_chart.planets.Soleil.sign }}</p>
+        </div>
+    </div>
+
+    <!-- Contenu du Rapport -->
+    <div class="content-wrapper">
+        
+        <!-- Introduction & Roue -->
+        <div class="section">
+            <h2>Ta Carte du Ciel</h2>
+            <div class="chart-container">
+                <img src="{{ chart_image_url }}" class="chart-placeholder" alt="Roue du thème natal">
+            </div>
+            <p class="ornament">✧ ✧ ✧</p>
+        </div>
+
+        <!-- Portrait -->
+        <div class="section">
+            <h2>I. Ton Portrait Astral</h2>
+            <p>{{ ai_content.portrait | safe }}</p>
+        </div>
+
+        <!-- Amour -->
+        <div class="section">
+            <h2>II. Amour & Relations</h2>
+            <p>{{ ai_content.amour | safe }}</p>
+        </div>
+
+        <!-- Carrière -->
+        <div class="section">
+            <h2>III. Mission de Vie & Carrière</h2>
+            <p>{{ ai_content.carriere | safe }}</p>
+        </div>
+
+        <!-- Ombres -->
+        <div class="section">
+            <h2>IV. Ombres & Défis</h2>
+            <p>{{ ai_content.defis | safe }}</p>
+        </div>
+
+        <!-- Prédictions -->
+        {% if plan_type == 'Complet' %}
+        <div class="section" style="page-break-before: always;">
+            <h2>V. Tes Prédictions sur 12 mois</h2>
+            <p>{{ ai_content.predictions | safe }}</p>
+        </div>
+        {% endif %}
+
+    </div>
+
+</body>
+</html>

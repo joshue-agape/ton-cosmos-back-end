@@ -1,13 +1,89 @@
 <!DOCTYPE html>
 <html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        body {
+            font-family: 'Georgia', serif;
+            background-color: #FAF9F6;
+            color: #1A0B2E;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background-color: #ffffff;
+        }
+        .header {
+            text-align: center;
+            padding-bottom: 30px;
+            border-bottom: 1px solid #D4AF37;
+        }
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #1A0B2E;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+        .content {
+            padding: 30px 0;
+            line-height: 1.6;
+            text-align: center;
+        }
+        .footer {
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .button {
+            display: inline-block;
+            padding: 15px 30px;
+            background-color: #1A0B2E;
+            color: #D4AF37 !important;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+        .signature {
+            margin-top: 30px;
+            font-style: italic;
+        }
+    </style>
+</head>
 <body>
-    <div style="font-family: Arial, sans-serif; color: #333;">
-        <h2>Bonjour {{ full_name }},</h2>
-        <p>Les étoiles ont parlé ! Votre rapport astrologique personnalisé est enfin prêt.</p>
-        <p>Vous trouverez votre thème natal complet en pièce jointe de cet email.</p>
-        <br>
-        <p>Belle lecture dans le cosmos,</p>
-        <p><strong>L'équipe Ton Cosmos</strong></p>
+    <div class="container">
+        <div class="header">
+            <div class="logo">Ton Cosmos</div>
+        </div>
+        
+        <div class="content">
+            <h1>Bonjour {{ full_name }},</h1>
+            
+            <p>Le moment est arrivé. L'IA a fini de décoder les astres pour toi.</p>
+            
+            <p>Ton rapport natal personnalisé de 40 à 60 pages est prêt. Tu y trouveras une analyse profonde de ta personnalité, de ta carrière et de tes relations.</p>
+            
+            <p><strong>Ton rapport est joint à cet email en format PDF.</strong></p>
+            
+            <p>Nous te conseillons de le lire au calme, dans un moment d'introspection.</p>
+            
+            <div class="signature">
+                Avec bienveillance,<br>
+                <strong>Indira</strong><br>
+                L'équipe Ton Cosmos
+            </div>
+        </div>
+
+        <div class="footer">
+            <p>&copy; {{ current_year }} JVN Lab - Ton Cosmos</p>
+            <p>Vous recevez cet email suite à votre commande sur notre plateforme.</p>
+        </div>
     </div>
 </body>
 </html>
