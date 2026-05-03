@@ -15,8 +15,8 @@ class OrderStatus(str, enum.Enum):
 
 # Type de produit acheté.
 class PlanType(str, enum.Enum):
-    ESSENTIEL = "essential"  # 9,90€
-    COMPLET = "complete"    # 19,90€
+    ESSENTIEL = "essentiel"  # 9,90€
+    COMPLET = "complet"    # 19,90€
 
 
 # Représente une commande utilisateur.
@@ -30,7 +30,7 @@ class Order(Base):
     # Données natales pour le rapport
     birth_date = Column(DateTime, nullable=False)
     birth_time = Column(Time, nullable=True)
-    birth_city = Column(String(100), nullable=False)
+    birth_city = Column(String(250), nullable=False)
     
     # Coordonnées géographiques pour calcul astral
     latitude = Column(Float, nullable=False)
@@ -38,7 +38,7 @@ class Order(Base):
     
     # Intégration Stripe
     stripe_session_id = Column(String(255), unique=True, index=True, nullable=True)
-    plan_type = Column(SqlEnum(PlanType, name="plan_type_enum"), nullable=False)
+    plan_type = Column(SqlEnum(PlanType, name="plan_type_enum"), nullable=True)
     status = Column(SqlEnum(OrderStatus, name="order_status_enum"), default=OrderStatus.PENDING_PAYMENT,)
     amount_total = Column(Integer, nullable=False, default=0)
 

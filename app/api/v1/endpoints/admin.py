@@ -7,7 +7,9 @@ from fastapi import APIRouter, BackgroundTasks, Depends, Response, Request
 from app.schemas.admin import *
 from app.services.email_service import *
 from app.services.utility_service import *
+from app.services.token_service import TokenService
 from app.repositories.admin_repository import *
+from app.repositories.token_repository import *
 from app.services.response_service import ServiceResponse
 
 
@@ -82,6 +84,8 @@ def login(body: LoginPayload, request: Request, response: Response, db: Session 
 @router.post("/logout")
 def logout(request: Request, response: Response, db: Session = Depends(get_db)):
     admin_repo = AdminRepository(db)
+    token_repo = TokenRepository(db)
+    token_service = TokenService(token_repo)
     
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
@@ -104,7 +108,12 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
         return ServiceResponse.error("Invalid refresh token payload", 401)
 
     if settings.ENV == "production":
-        print("Revoke refresh token")
+        token_service.revoque_token(
+            user_id=user.id,
+            token=refresh_token,
+            token_type="refresh",
+            exp=refresh_expire
+        )
 
     response.delete_cookie("refresh_token")
 
@@ -119,6 +128,8 @@ def logout(request: Request, response: Response, db: Session = Depends(get_db)):
 @router.post("/refresh-token")
 def refreshToken(token: str, request: Request, response: Response, db: Session = Depends(get_db)):
     admin_repo = AdminRepository(db)
+    token_repo = TokenRepository(db)
+    token_service = TokenService(token_repo)
     
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
@@ -157,8 +168,18 @@ def refreshToken(token: str, request: Request, response: Response, db: Session =
         return ServiceResponse.error(message="User not found", status_code=404)
 
     if settings.ENV == 'production':
-        print("Revoke refresh token")
-        print(f"revoke access token = {token}")
+        token_service.revoque_token(
+            user_id=user_id,
+            token=refresh_token,
+            token_type="refresh",
+            exp=expire
+        )
+        token_service.revoque_token(
+            user_id=user_id,
+            token=token,
+            token_type="access",
+            exp=now
+        )
         
     new_access_token = jwt_service.create_access_token(
         user_id=existing_user.id,
@@ -218,7 +239,7 @@ def reset_password(body: ForgotPayload, background_tasks: BackgroundTasks, db: S
         expires_at=fp_expire
     )
 
-    reset_password_link = f"{settings.FRONTEND_URL}/auth/reset-password?token={fp_token}"
+    reset_password_link = f"{settings.FRONTEND_URL}/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9/YXV0aC9yZXNldC1wYXNzd29yZA?token={fp_token}"
     
     background_tasks.add_task(
         email_service.send_email,
@@ -247,7 +268,7 @@ def verifyToken(token: str, db: Session = Depends(get_db)):
     if not admin:
         return ServiceResponse.error(
             message="Ce lien de réinitialisation est invalide ou a déjà été utilisé.",
-            status_code=400
+            status_code=404
         )
     
     if admin.reset_password_token_expires_at < datetime.now(timezone.utc):
