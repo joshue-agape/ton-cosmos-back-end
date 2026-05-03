@@ -19,6 +19,7 @@ from app.services.response_service import ServiceResponse
 router = APIRouter()
 stripe.api_key = settings.STRIPE_SECRET_KEY
 endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
+stripe.api_version = "2026-04-22.dahlia"
 
 ai_service = AIService()
 pdf_service = PDFService()
@@ -82,8 +83,7 @@ async def process_order(order_id: int, session_id: str):
     order_repo = OrderRepository(db)
     report_repo = ReportRepository(db)
     
-    # Protection contre les traitements en double
-    if order_repo.get_by_session_id(session_id):
+    if order_repo.get_by_stripe_session(session_id):
         return
 
     start_time = time.perf_counter()
@@ -92,16 +92,13 @@ async def process_order(order_id: int, session_id: str):
         db.close()
         return
 
-    # Initialisation du statut et du stripe_id
     order.stripe_session_id = session_id
     order_repo.update_status(order.id, OrderStatus.PROCESSING)
     
-    # Création préventive du rapport pour le suivi admin
     report = report_repo.create(order.id)
     error_message = None
 
     try:
-        # Préparation des données de naissance
         birth_datetime = order.birth_date.replace(tzinfo=None)
         if order.birth_time:
             birth_datetime = birth_datetime.replace(
@@ -110,7 +107,6 @@ async def process_order(order_id: int, session_id: str):
                 second=0, microsecond=0
             )
 
-        # Moteur Astral & IA (Claude API)
         chart = astrology_service.get_full_chart(
             birth_date=birth_datetime, 
             lat=order.latitude,
@@ -125,7 +121,6 @@ async def process_order(order_id: int, session_id: str):
         
         report_repo.update_content(report_id=report.id, astral_data=chart, ai_content=ai_text)
 
-        # Génération PDF Premium
         safe_name = (order.full_name or "user").replace(" ", "-")
         timestamp = datetime.now().strftime("%Y%m%d")
         output_filename = f"report-{safe_name}-{timestamp}.pdf"
@@ -153,7 +148,6 @@ async def process_order(order_id: int, session_id: str):
             "current_year": datetime.now().year
         }
         
-        # Envoi Email (PDF en pièce jointe impératif)
         email_result = await email_service.send_email_with_attachment(
             to=order.email,
             subject="Ton Cosmos : Ton Rapport Astral est arrivé !",
@@ -168,7 +162,6 @@ async def process_order(order_id: int, session_id: str):
             error_message = f"Email failed: {email_result.get('message')}"
             order_repo.update_status(order.id, OrderStatus.FAILED)
 
-        # Alerte si délai > 5 min (300s) selon CDC
         if duration > 300:
             print(f"ALERT: Generation took {duration}s for order {order_id}")
 
@@ -193,37 +186,41 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
 
-    order_repo = OrderRepository(db)
-    report_repo = ReportRepository(db)
-
     try:
         event = stripe.Webhook.construct_event(
             payload,
             sig_header,
             endpoint_secret
         )
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid payload")
-    except stripe.error.SignatureVerificationError:
+    except Exception as e:
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     if event["type"] != "checkout.session.completed":
         return {"status": "ignored"}
 
-    session = event["data"]["object"]
-
+    session_obj = event["data"]["object"]
+    session = session_obj.to_dict() 
+    
     session_id = session.get("id")
-    order_id = session.get("metadata", {}).get("order_id")
+    metadata = session.get("metadata", {})
+    order_id = metadata.get("order_id")
     payment_status = session.get("payment_status")
 
+    print(f"DEBUG: Session={session_id} | Order={order_id} | Status={payment_status}")
+
     if not session_id or not order_id:
-        raise HTTPException(status_code=400, detail="Invalid session data")
+        return {"status": "error", "message": "Missing order_id in metadata"}
 
     if payment_status != "paid":
+        print(f"Paiement non finalisé (Status: {payment_status})")
         return {"status": "not_paid"}
 
-    print(f"Paiement confirmé pour commande {order_id}")
+    try:
+        print(f"Validation commande {order_id} en cours...")
+        background_tasks.add_task(process_order, int(order_id), session_id)
+    except ValueError:
+        print(f"Erreur: order_id '{order_id}' n'est pas un nombre.")
+        return {"status": "invalid_id"}
 
-    background_tasks.add_task(process_order, int(order_id), session_id)
+    return { "status": "success" }
 
-    return {"status": "success"}
