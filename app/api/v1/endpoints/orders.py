@@ -2,7 +2,9 @@ import os
 from sqlalchemy.orm import Session
 from app.database.deps import get_db
 from fastapi.responses import FileResponse
+from fastapi.encoders import jsonable_encoder
 from fastapi import APIRouter, Depends, status
+from app.services.response_service import ServiceResponse
 from app.repositories.order_repository import OrderRepository
 from app.repositories.report_repository import ReportRepository
 
@@ -26,6 +28,7 @@ pdf_service = PDFService()
 def create_order(body: OrderPayload, db: Session = Depends(get_db)):
     order_repo = OrderRepository(db)
     amount = 990 if body.plan_type == PlanType.ESSENTIEL else 1990
+    print(body)
     
     order = order_repo.create({
         "email": body.email,
@@ -40,7 +43,13 @@ def create_order(body: OrderPayload, db: Session = Depends(get_db)):
         "status": OrderStatus.PENDING_PAYMENT
     })
     
-    return order
+    data_json = jsonable_encoder(order)
+    
+    return ServiceResponse.success(
+        status_code=201,
+        message="Order created successfully.",
+        data=data_json
+    )
 
 
 # ==================================================================== #
@@ -48,7 +57,15 @@ def create_order(body: OrderPayload, db: Session = Depends(get_db)):
 @router.get("/find-all")
 def get_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
     repo = OrderRepository(db)
-    return repo.get_all(skip=skip, limit=limit)
+    orders = repo.get_all(skip=skip, limit=limit)
+    
+    data_json = jsonable_encoder(orders)
+    
+    return ServiceResponse.success(
+        status_code=200,
+        data=data_json,
+        message="Orders lists"
+    )
 
 
 # ================================================================ #
@@ -75,5 +92,48 @@ def download_report(order_id: int, db: Session = Depends(get_db)):
         path=file_path,
         filename=report.pdf_name,
         media_type="application/pdf"
+    )
+    
+    
+# ================================================================ #
+@router.get("/stats")
+async def read_dashboard_stats(db: Session = Depends(get_db)):
+    order_repo = OrderRepository(db)
+    s = order_repo.get_dashboard_stats()
+    
+    stats = [
+        {
+            "label": "Aujourd'hui",
+            "value": f"{s['today_revenue']:.2f}€",
+            "icon": "Euro",
+            "sub": f"{s['week_revenue']:.2f}€ cette semaine",
+        },
+        {
+            "label": "Ce mois",
+            "value": f"{s['month_revenue']:.2f}€",
+            "icon": "TrendingUp",
+            "sub": f"{s['total_revenue']:.2f}€ total",
+        },
+        {
+            "label": "Commandes",
+            "value": str(s['total_orders']),
+            "icon": "Users",
+            "sub": f"{s['completed_orders']} livrées",
+        },
+        {
+            "label": "Taux livraison",
+            "value": f"{s['delivery_rate']}%",
+            "icon": "BarChart3",
+            "sub": f"{s['failed_orders']} erreur(s)",
+            "alert": s['delivery_rate'] < 80 and s['delivery_rate'] > 0,
+        },
+    ]
+
+    data_json = jsonable_encoder(stats)
+    
+    return ServiceResponse.success(
+        status_code=200,
+        message="Statistiques récupérées avec succès",
+        data=data_json
     )
     

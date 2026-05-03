@@ -1,5 +1,7 @@
 from typing import List, Optional
-from sqlalchemy.orm import Session
+from sqlalchemy import func
+from datetime import datetime, timedelta
+from sqlalchemy.orm import Session, joinedload
 from app.models.order import Order, OrderStatus
 from app.schemas.order import OrderCreate
 
@@ -51,12 +53,25 @@ class OrderRepository:
     """ Récupère l'historique des commandes pour un email donné. """
     def get_orders_by_email(self, email: str) -> List[Order]:
         return self.db.query(Order).filter(Order.email == email).all()
-
+    
 
     # ============================================================ #
     """ Récupère la liste des commandes pour le Dashboard Admin. """
     def get_all(self, skip: int = 0, limit: int = 10000) -> List[Order]:
-        return self.db.query(Order).offset(skip).limit(limit).all()
+        return self.db.query(Order).order_by(Order.created_at.desc()).offset(skip).limit(limit).all()
+
+
+    # ============================================================ #
+    """ Récupère la liste des commandes pour le Dashboard Admin. """
+    def get_all_with_report(self, skip: int = 0, limit: int = 10000) -> List[Order]:
+        return (
+            self.db.query(Order)
+            .options(joinedload(Order.report))
+            .order_by(Order.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+            .all()
+        )
 
 
     # ========================================================================== #
@@ -69,3 +84,54 @@ class OrderRepository:
             self.db.refresh(db_order)
         return db_order
     
+    
+    # ============================================== #
+    # """Calcule les agrégations pour le Dashboard """
+    def get_dashboard_stats(self):
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        week_start = today_start - timedelta(days=now.weekday())
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        # Revenus Aujourd'hui
+        today_rev = self.db.query(func.sum(Order.amount_total)).filter(
+            Order.status == OrderStatus.PAID, 
+            Order.created_at >= today_start
+        ).scalar() or 0
+
+        # Revenus Semaine
+        week_rev = self.db.query(func.sum(Order.amount_total)).filter(
+            Order.status == OrderStatus.PAID, 
+            Order.created_at >= week_start
+        ).scalar() or 0
+
+        # Revenus Mois
+        month_rev = self.db.query(func.sum(Order.amount_total)).filter(
+            Order.status == OrderStatus.PAID, 
+            Order.created_at >= month_start
+        ).scalar() or 0
+
+        # Total historique
+        total_rev = self.db.query(func.sum(Order.amount_total)).filter(
+            Order.status == OrderStatus.PAID
+        ).scalar() or 0
+
+        # Stats de volume et livraison
+        total_count = self.db.query(func.count(Order.id)).scalar() or 0
+        completed_count = self.db.query(func.count(Order.id)).filter(
+            Order.status == OrderStatus.COMPLETED
+        ).scalar() or 0
+        failed_count = self.db.query(func.count(Order.id)).filter(
+            Order.status == OrderStatus.FAILED
+        ).scalar() or 0
+        
+        return {
+            "today_revenue": today_rev / 100,
+            "week_revenue": week_rev / 100,
+            "month_revenue": month_rev / 100,
+            "total_revenue": total_rev / 100,
+            "total_orders": total_count,
+            "completed_orders": completed_count,
+            "failed_orders": failed_count,
+            "delivery_rate": round((completed_count / total_count * 100), 1) if total_count > 0 else 0
+        }

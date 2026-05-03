@@ -11,6 +11,7 @@ from app.services.astrology_service import *
 from app.schemas.order import *
 from app.services.email_service import *
 from app.services.claude_service import AIService
+from app.services.response_service import ServiceResponse
 from app.repositories.order_repository import OrderRepository
 from app.repositories.report_repository import ReportRepository
 from app.services.response_service import ServiceResponse
@@ -33,6 +34,7 @@ class OrderRequest(BaseModel):
     plan_type: str
     order_id: int
     amount_total: int
+    email: str
 
 
 # ================================
@@ -44,22 +46,31 @@ async def create_checkout(body: OrderRequest):
         session = stripe_service.create_checkout_session(
             plan_type=body.plan_type,
             amount_total=body.amount_total,
-            order_id=body.order_id
+            order_id=body.order_id,
+            user_email=body.email
+        )
+        
+        return ServiceResponse.success(
+            status_code=200,
+            message="Checkout session created successfully",
+            data={
+                "checkout_url": session.url,
+                "session_id": session.id
+            }
         )
 
-        return {
-            "success": True,
-            "checkout_url": session.url,
-            "session_id": session.id
-        }
-
     except HTTPException as e:
-        raise e
+        return ServiceResponse.error(
+            status_code=e.status_code,
+            message=str(e.detail),
+            data=None
+        )
 
     except Exception as e:
-        raise HTTPException(
+        return ServiceResponse.error(
             status_code=500,
-            detail=str(e)
+            message="An internal server error occurred",
+            data={"details": str(e)}
         )
         
 
@@ -216,5 +227,3 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
     background_tasks.add_task(process_order, int(order_id), session_id)
 
     return {"status": "success"}
-
-

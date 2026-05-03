@@ -6,12 +6,12 @@ stripe.api_key = settings.STRIPE_SECRET_KEY
 
 class StripeService:
     @staticmethod
-    def create_checkout_session(plan_type: str, amount_total: int, order_id: int):
+    def create_checkout_session(plan_type: str, amount_total: int, order_id: int, user_email: str):
         try:
             session = stripe.checkout.Session.create(
                 mode="payment",
                 payment_method_types=["card"],
-                
+                customer_email=user_email,
                 metadata={
                     "plan_type": plan_type,
                     "order_id": order_id
@@ -30,7 +30,7 @@ class StripeService:
                     }
                 ],
                 
-                success_url=f"{settings.FRONTEND_URL}/success?session_id={{CHECKOUT_SESSION_ID}}&order_id={order_id}",
+                success_url=f"{settings.FRONTEND_URL}/landing/payments-success?session_id={{CHECKOUT_SESSION_ID}}&order_id={order_id}",
                 cancel_url=f"{settings.FRONTEND_URL}/landing",
             )
             return session

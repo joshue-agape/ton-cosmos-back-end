@@ -71,7 +71,7 @@ def send_email(background_tasks: BackgroundTasks):
         {
             "name": "Josh",
             "email": "joshuedev.dark@gmail.com",
-            "message": "Hello background 🚀"
+            "message": "Hello background"
         }
     )
 
@@ -105,7 +105,6 @@ def testCreatePDF():
 
 @router.get("/get-pdf/{pdf_name}")
 def get_pdf(pdf_name: str):
-
     file_path = os.path.join("static/reports", pdf_name)
 
     if not os.path.exists(file_path):
