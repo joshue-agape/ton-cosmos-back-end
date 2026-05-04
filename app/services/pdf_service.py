@@ -4,16 +4,11 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from datetime import datetime
 
 class PDFService:
-    
-    # =============================================== #
-    """ Chargeur de templates pour le design du PDF """
     def __init__(self):
         template_path = os.path.join(os.path.dirname(__file__), "../templates")
         self.env = Environment(loader=FileSystemLoader(template_path))
 
 
-    # ========================================================================== #
-    """ Rendu du template HTML avec les données (Planètes, Aspects, Textes IA) """
     def render_template(self, template_name: str, data: dict) -> str:
         try:
             template = self.env.get_template(f"reports_pdf/{template_name}.html")
@@ -26,8 +21,6 @@ class PDFService:
             raise Exception(f"Template rendering error: {str(e)}")
 
 
-    # ======================================================================= #
-    """ Génère un PDF à partir des données de la commande et du contenu IA. """
     def generate_astrological_report(self, template_name: str, data: dict, output_filename: str) -> str:
         try:
             output_dir = "static/reports"

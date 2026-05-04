@@ -10,8 +10,6 @@ class OrderRepository:
         self.db = db
 
 
-    # ================================================== #
-    """ Crée une nouvelle commande en base de données. """
     def create(self, order_data: OrderCreate) -> Order:
         db_order = Order(**order_data)
         self.db.add(db_order)
@@ -20,8 +18,6 @@ class OrderRepository:
         return db_order
     
     
-    # ================================================== #
-    """ Mettre a jour une commande en base de données. """
     def update(self, order_id: int, order_data) -> Order:
         db_order = self.db.query(Order).filter(Order.id == order_id).first()
 
@@ -37,45 +33,31 @@ class OrderRepository:
         return db_order
 
 
-    # ============================================ #
-    """ Récupère une commande par son ID unique. """
     def get_by_id(self, order_id: int) -> Optional[Order]:
         return self.db.query(Order).filter(Order.id == order_id).first()
 
 
-    # ======================================================= #
-    """ Récupère une commande via son ID de session Stripe. """
     def get_by_stripe_session(self, session_id: str) -> Optional[Order]:
         return self.db.query(Order).filter(Order.stripe_session_id == session_id).first()
 
 
-    # ============================================================ #
-    """ Récupère l'historique des commandes pour un email donné. """
     def get_orders_by_email(self, email: str) -> List[Order]:
         return self.db.query(Order).filter(Order.email == email).all()
     
 
-    # ============================================================ #
-    """ Récupère la liste des commandes pour le Dashboard Admin. """
-    def get_all(self, skip: int = 0, limit: int = 10000) -> List[Order]:
-        return self.db.query(Order).order_by(Order.created_at.desc()).offset(skip).limit(limit).all()
+    def get_all(self) -> List[Order]:
+        return self.db.query(Order).order_by(Order.created_at.desc()).all()
 
 
-    # ============================================================ #
-    """ Récupère la liste des commandes pour le Dashboard Admin. """
-    def get_all_with_report(self, skip: int = 0, limit: int = 10000) -> List[Order]:
+    def get_all_with_report(self) -> List[Order]:
         return (
             self.db.query(Order)
             .options(joinedload(Order.report))
             .order_by(Order.created_at.desc())
-            .offset(skip)
-            .limit(limit)
             .all()
         )
 
 
-    # ========================================================================== #
-    """ Met à jour le statut d'une commande (ex: passage à PAID après Stripe). """
     def update_status(self, order_id: int, status: OrderStatus) -> Optional[Order]:
         db_order = self.get_by_id(order_id)
         if db_order:
@@ -85,8 +67,6 @@ class OrderRepository:
         return db_order
     
     
-    # ============================================== #
-    # """Calcule les agrégations pour le Dashboard """
     def get_dashboard_stats(self):
         now = datetime.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)

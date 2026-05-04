@@ -7,6 +7,34 @@ class AIService:
         self.client = anthropic.Anthropic(
             api_key=settings.ANTHROPIC_API_KEY
         )
+        
+    
+    def test_claude_connection(self):
+        test_schema = {
+            "status": "ok",
+            "message": "test",
+            "sections": [{"title": "test", "blocks": [], "summary": "test"}]
+        }
+        
+        try:
+            response = self.client.messages.create(
+                model="claude-3-haiku-20240307", 
+                max_tokens=200,
+                temperature=0,
+                system=f"Réponds uniquement par un JSON valide respectant cette structure: {json.dumps(test_schema)}",
+                messages=[{"role": "user", "content": "Génère un JSON de test court."}]
+            )
+            
+            raw_content = response.content[0].text.strip()
+            
+            if raw_content.startswith("```json"):
+                raw_content = raw_content.replace("```json", "").replace("```", "").strip()
+            
+            return json.loads(raw_content)
+            
+        except Exception as e:
+            return {"error": str(e), "integration_status": "failed"}
+
 
     def generate_astrology_report(self, chart: dict, full_name: str, plan_type: str):
         is_complete = plan_type.lower() == "complete"
@@ -59,7 +87,11 @@ Le JSON doit suivre strictement cette hiérarchie pour chaque section :
             system=f"Tu es Indira. Réponds exclusivement en JSON pur respectant cette interface: {json.dumps(response_schema)}",
             messages=[{"role": "user", "content": prompt}]
         )
-
-        return response.content[0].text
-    
+        
+        raw_content = response.content[0].text.strip()
+        
+        if raw_content.startswith("```json"):
+            raw_content = raw_content.replace("```json", "").replace("```", "").strip()
+        
+        return json.loads(raw_content)
     

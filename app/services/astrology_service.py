@@ -4,19 +4,7 @@ from typing import Dict, Any, List, TypedDict
 from app.types.astrology import *
 
 
-"""
-Service principal de calcul astrologique basé sur Swiss Ephemeris.
-
-Responsabilités :
-- Calcul du thème natal
-- Calcul des aspects
-- Génération des transits futurs
-
-"""
 class AstrologyService:
-    
-    # ======================================================== #
-    """ Initialise le moteur astrologique et les constantes. """
     def __init__(self):
         swe.set_ephe_path('/usr/share/ephe')
 
@@ -39,14 +27,10 @@ class AstrologyService:
         ]
 
 
-    # ==================================================================== #
-    """ Convertit une datetime en Julian Day. Returns: float: Julian Day """
     def _get_date_to_jd(self, dt: datetime) -> float:
         return swe.julday(dt.year, dt.month, dt.day, dt.hour + dt.minute / 60.0)
     
     
-    # ================================================================ #
-    """ Swiss Ephemeris returns: ([lon, lat, dist, speed], flag) """
     def _extract_lon(self, result):
         if isinstance(result, tuple):
             result = result[0]
@@ -57,15 +41,11 @@ class AstrologyService:
         return float(result)
     
     
-    # ============================================================ #
-    """ Retourne le signe astrologique à partir d'une longitude. """
     def _get_sign(self, lon: float) -> str:
         lon = float(lon)
         return self.signs[int(lon // 30)]
     
     
-    # ==================================== #
-    """ Formate une position planétaire. """
     def _format_position(self, lon: float):
         lon = float(lon)
         return {
@@ -75,8 +55,6 @@ class AstrologyService:
         }
 
 
-    # =============================================== #
-    """ Calcule les aspects majeurs entre planètes. """
     def _calculate_aspects(self, planets: Dict[str, Any]):
         major_aspects = {
             0: "Conjonction",
@@ -110,8 +88,6 @@ class AstrologyService:
         return results
 
 
-    # ================================================================ #
-    """ Génère les transits des 12 prochains mois (planètes lentes). """
     def _calculate_future_transits(self):
         slow_planets = {
             "Jupiter": swe.JUPITER,
@@ -145,8 +121,6 @@ class AstrologyService:
         return forecast
 
 
-    # =============================================== #
-    """ Génère le thème natal complet + prévisions. """
     def get_full_chart(self, birth_date: datetime, lat: float, lon: float):
 
         jd = self._get_date_to_jd(birth_date)

@@ -22,8 +22,6 @@ astrology_service = AstrologyService()
 pdf_service = PDFService()
 
 
-# ================================================================================= #
-""" Crée une nouvelle commande après la saisie du formulaire sur la landing page. """
 @router.post("/create", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 def create_order(body: OrderPayload, db: Session = Depends(get_db)):
     order_repo = OrderRepository(db)
@@ -52,12 +50,10 @@ def create_order(body: OrderPayload, db: Session = Depends(get_db)):
     )
 
 
-# ==================================================================== #
-""" Récupère toutes les commandes pour le Dashboard Admin de Joseph. """
 @router.get("/find-all")
-def get_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_orders(db: Session = Depends(get_db)):
     repo = OrderRepository(db)
-    orders = repo.get_all(skip=skip, limit=limit)
+    orders = repo.get_all()
     
     data_json = jsonable_encoder(orders)
     
@@ -67,12 +63,11 @@ def get_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
         message="Orders lists"
     )
 
-# ==================================================================== #
-""" Récupère toutes les commandes pour le Dashboard Admin de Joseph. """
+
 @router.get("/find-all-with-report")
-def get_orders_with_report(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+def get_orders_with_report(db: Session = Depends(get_db)):
     repo = OrderRepository(db)
-    orders = repo.get_all_with_report(skip=skip, limit=limit)
+    orders = repo.get_all_with_report()
     
     data_json = jsonable_encoder(orders)
     
@@ -83,8 +78,6 @@ def get_orders_with_report(skip: int = 0, limit: int = 100, db: Session = Depend
     )
     
 
-# ================================================================ #
-""" Télécharge le rapport PDF associé à une commande via son ID. """
 @router.get("/report/download/pdf-report/{order_id}")
 def download_report(order_id: int, db: Session = Depends(get_db)):
     order_repo = OrderRepository(db)
@@ -110,7 +103,6 @@ def download_report(order_id: int, db: Session = Depends(get_db)):
     )
     
     
-# ================================================================ #
 @router.get("/stats")
 async def read_dashboard_stats(db: Session = Depends(get_db)):
     order_repo = OrderRepository(db)

@@ -24,7 +24,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # On évite de bloquer la documentation API (Swagger/Redoc)
-        if path.startswith(("/docs", "/redoc", "/openapi.json", "/api/v1/health")):
+        if path.startswith(("/docs", "/redoc", "/openapi.json", "/api/v1/health", "/api/v1/order", "/api/v1/admin", "/api/v1/stripe")):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization")

@@ -28,7 +28,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,                # Liste des domaines autorisés (ex: localhost:3000)
     allow_credentials=True,                             # Autorise l'envoi de cookies et headers d'auth
-    allow_methods=["POST", "GET", "PUT", "PATCH"],      # Verbes HTTP autorisés
+    allow_methods=["POST","GET","PUT","PATCH"],         # Verbes HTTP autorisés
     allow_headers=["*"],                                # Accepte tous les types de headers
 )
 
@@ -41,11 +41,5 @@ app.include_router(api_router, prefix="/api/v1")
 # Note : Il est ajouté en dernier car l'ordre d'exécution des middlewares est LIFO (Last In, First Out)
 app.add_middleware(
     AuthMiddleware,
-    public_paths=[
-        "/api/v1/admin/login",
-        "/api/v1/order/create",
-        "/api/v1/admin/forgot-password",
-        "/api/v1/admin/update-password",
-        "/api/v1/stripe/create-checkout-session"
-    ],
+    public_paths=[],
 )

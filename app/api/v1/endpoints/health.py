@@ -8,6 +8,7 @@ from datetime import datetime, time as dt_time
 
 from app.services.astrology_service import *
 from app.services.pdf_service import *
+from app.services.claude_service import *
 
 router = APIRouter()
 
@@ -16,13 +17,9 @@ pdf_service = PDFService()
 
 @router.get("/")
 def health_check():
-    """ TEST DE API """
     return {"status": "ok"}
 
 
-# ======================== #
-#  TEST SERVICE ASTROLOGY  #
-#========================= #
 class BodyTest(BaseModel):
     birth_date: datetime
     birth_time: Optional[dt_time] = None
@@ -57,9 +54,12 @@ def testCalcule(body: BodyTest):
     return chart
 
 
-# ========================= #
-#  TEST SERVICE CREATE PDF  #
-#========================== #
+@router.post("/get-ia-response")
+def testCalcule():
+    claude_ai = AIService.test_claude_connection()
+    return claude_ai
+
+
 @router.post("/generate-report")
 def testCreatePDF():
     data = {}

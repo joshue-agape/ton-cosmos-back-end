@@ -31,9 +31,6 @@ stripe_service = StripeService()
 astrology_service = AstrologyService()
 
 
-# ================================
-# SCHEMA
-# ================================
 class OrderRequest(BaseModel):
     plan_type: str
     order_id: int
@@ -41,9 +38,6 @@ class OrderRequest(BaseModel):
     email: str
 
 
-# ================================
-# CREATE CHECKOUT
-# ================================
 @router.post("/create-checkout-session")
 async def create_checkout(body: OrderRequest):
     try:
@@ -78,9 +72,6 @@ async def create_checkout(body: OrderRequest):
         )
         
 
-# ================================
-# BACKGROUND TASK
-# ================================
 async def process_order(order_id: int, session_id: str):
     db: Session = next(get_db())
     order_repo = OrderRepository(db)
@@ -200,9 +191,6 @@ async def process_order(order_id: int, session_id: str):
         db.close()
     
     
-# ================================
-# STRIPE WEBHOOK
-# ================================
 @router.post("/stripe/webhook")
 async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
     payload = await request.body()
