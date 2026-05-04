@@ -66,52 +66,57 @@ class OrderRepository:
             self.db.refresh(db_order)
         return db_order
     
-    
+
     def get_dashboard_stats(self):
         now = datetime.now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start = today_start - timedelta(days=now.weekday())
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        # Revenus Aujourd'hui
-        today_rev = self.db.query(func.sum(Order.amount_total)).filter(
-            Order.status == OrderStatus.PAID, 
-            Order.created_at >= today_start
+        paid_statuses = [OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.COMPLETED]
+
+        def get_revenue(start_date=None):
+            query = self.db.query(func.sum(Order.amount_total)).filter(
+                Order.status.in_(paid_statuses)
+            )
+            if start_date:
+                query = query.filter(Order.created_at >= start_date)
+            return query.scalar() or 0
+
+        today_rev = get_revenue(today_start)
+        week_rev = get_revenue(week_start)
+        month_rev = get_revenue(month_start)
+        total_rev = get_revenue()
+
+        total_paid_count = self.db.query(func.count(Order.id)).filter(
+            Order.status.in_(paid_statuses)
         ).scalar() or 0
 
-        # Revenus Semaine
-        week_rev = self.db.query(func.sum(Order.amount_total)).filter(
-            Order.status == OrderStatus.PAID, 
-            Order.created_at >= week_start
-        ).scalar() or 0
-
-        # Revenus Mois
-        month_rev = self.db.query(func.sum(Order.amount_total)).filter(
-            Order.status == OrderStatus.PAID, 
-            Order.created_at >= month_start
-        ).scalar() or 0
-
-        # Total historique
-        total_rev = self.db.query(func.sum(Order.amount_total)).filter(
-            Order.status == OrderStatus.PAID
-        ).scalar() or 0
-
-        # Stats de volume et livraison
-        total_count = self.db.query(func.count(Order.id)).scalar() or 0
         completed_count = self.db.query(func.count(Order.id)).filter(
             Order.status == OrderStatus.COMPLETED
         ).scalar() or 0
-        failed_count = self.db.query(func.count(Order.id)).filter(
+
+        processing_count = self.db.query(func.count(Order.id)).filter(
+            Order.status.in_([OrderStatus.PAID, OrderStatus.PROCESSING])
+        ).scalar() or 0
+
+        failed_delivery_count = self.db.query(func.count(Order.id)).filter(
             Order.status == OrderStatus.FAILED
         ).scalar() or 0
-        
+
+        denominator = total_paid_count + failed_delivery_count
+        delivery_rate = round((completed_count / denominator * 100), 1) if denominator > 0 else 0
+
         return {
             "today_revenue": today_rev / 100,
             "week_revenue": week_rev / 100,
             "month_revenue": month_rev / 100,
             "total_revenue": total_rev / 100,
-            "total_orders": total_count,
+            "total_paid": total_paid_count,
             "completed_orders": completed_count,
-            "failed_orders": failed_count,
-            "delivery_rate": round((completed_count / total_count * 100), 1) if total_count > 0 else 0
+            "processing_orders": processing_count,
+            "failed_deliveries": failed_delivery_count,
+            "delivery_rate": delivery_rate
         }
+        
+        

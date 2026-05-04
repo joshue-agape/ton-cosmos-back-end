@@ -110,29 +110,29 @@ async def read_dashboard_stats(db: Session = Depends(get_db)):
     
     stats = [
         {
-            "label": "Aujourd'hui",
+            "label": "CA Aujourd'hui",
             "value": f"{s['today_revenue']:.2f}€",
             "icon": "Euro",
             "sub": f"{s['week_revenue']:.2f}€ cette semaine",
         },
         {
-            "label": "Ce mois",
+            "label": "CA Global",
             "value": f"{s['month_revenue']:.2f}€",
             "icon": "TrendingUp",
-            "sub": f"{s['total_revenue']:.2f}€ total",
+            "sub": f"Total: {s['total_revenue']:.2f}€",
         },
         {
-            "label": "Commandes",
-            "value": str(s['total_orders']),
+            "label": "En cours",
+            "value": str(s['processing_orders']),
             "icon": "Users",
-            "sub": f"{s['completed_orders']} livrées",
+            "sub": f"{s['total_paid']} ventes totales",
         },
         {
-            "label": "Taux livraison",
+            "label": "Taux de livraison",
             "value": f"{s['delivery_rate']}%",
             "icon": "BarChart3",
-            "sub": f"{s['failed_orders']} erreur(s)",
-            "alert": s['delivery_rate'] < 80 and s['delivery_rate'] > 0,
+            "sub": f"{s['failed_deliveries']} erreur(s) technique(s)",
+            "alert": s['delivery_rate'] < 95 and s['total_paid'] > 0,
         },
     ]
 
