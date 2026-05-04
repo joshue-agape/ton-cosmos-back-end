@@ -1,23 +1,22 @@
 import os
 import time
-from datetime import datetime, time as dt_time
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from typing import Optional
+from pydantic import BaseModel
 from fastapi.responses import FileResponse
+from fastapi import APIRouter, HTTPException
+from datetime import datetime, time as dt_time
 
-from app.schemas.order import *
 from app.services.astrology_service import *
-from app.services.email_service import *
 from app.services.pdf_service import *
-from app.services.stripe_service import *
 
 router = APIRouter()
+
 astrology_service = AstrologyService()
-email_service = EmailService()
 pdf_service = PDFService()
-stripe_service = StripeService()
 
 @router.get("/")
 def health_check():
+    """ TEST DE API """
     return {"status": "ok"}
 
 
@@ -58,43 +57,21 @@ def testCalcule(body: BodyTest):
     return chart
 
 
-# =========================== #
-#  TEST SERVICE EMAIL SENDER  #
-#============================ #
-@router.post("/send-email")
-def send_email(background_tasks: BackgroundTasks):
-    background_tasks.add_task(
-        email_service.send_email,
-        "joshuedev.dark@gmail.com",
-        "Test Email",
-        "test_email",
-        {
-            "name": "Josh",
-            "email": "joshuedev.dark@gmail.com",
-            "message": "Hello background"
-        }
-    )
-
-    return {"success": True}
-
-
 # ========================= #
 #  TEST SERVICE CREATE PDF  #
 #========================== #
 @router.post("/generate-report")
 def testCreatePDF():
-    data = {
-        "name": "Josh Agape",
-        "birth_date": "2001-11-27",
-        "sun_sign": "Sagittaire",
-        "moon_sign": "Bélier",
-        "message": "Voici votre rapport astrologique généré avec succès"
-    }
+    data = {}
 
+    safe_name = ("cosmos" or "user").replace(" ", "-")
+    timestamp = datetime.now().strftime("%Y%m%d")
+    output_filename = f"report-{safe_name}-{timestamp}.pdf"
+    
     pdf_path = pdf_service.generate_astrological_report(
-        template_name="test_report",
+        template_name="premium_report_test",
         data=data,
-        output_filename="test_report.pdf"
+        output_filename=output_filename
     )
 
     return {

@@ -1,20 +1,23 @@
-import time
 import stripe
+import time as time_module
+from datetime import datetime, time as datetime_time
 from sqlalchemy.orm import Session
 from app.database.deps import get_db
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Response, Request
 from app.core.config import settings
 from pydantic import BaseModel
-from app.services.pdf_service import *
-from app.services.stripe_service import *
-from app.services.astrology_service import *
+from app.services.pdf_service import PDFService
+from app.services.stripe_service import StripeService
+from app.services.astrology_service import AstrologyService
 from app.schemas.order import *
-from app.services.email_service import *
+from app.services.email_service import EmailService
 from app.services.claude_service import AIService
 from app.services.response_service import ServiceResponse
 from app.repositories.order_repository import OrderRepository
 from app.repositories.report_repository import ReportRepository
 from app.services.response_service import ServiceResponse
+
+from app.schemas.report import *
 
 router = APIRouter()
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -85,8 +88,9 @@ async def process_order(order_id: int, session_id: str):
     
     if order_repo.get_by_stripe_session(session_id):
         return
-
-    start_time = time.perf_counter()
+    
+    start_time = time_module.perf_counter()
+    
     order = order_repo.get_by_id(order_id)
     if not order:
         db.close()
@@ -95,7 +99,11 @@ async def process_order(order_id: int, session_id: str):
     order.stripe_session_id = session_id
     order_repo.update_status(order.id, OrderStatus.PROCESSING)
     
-    report = report_repo.create(order.id)
+    report_data = ReportCreate(
+        order_id=order.id,
+        generation_duration=0
+    )
+    report = report_repo.create(report_data)
     error_message = None
 
     try:
@@ -112,15 +120,18 @@ async def process_order(order_id: int, session_id: str):
             lat=order.latitude,
             lon=order.longitude
         )
+        
+        report_repo.update_astral_data_json(report_id=report.id, astral_data=chart)
 
-        ai_text = ai_service.generate_astrology_report(
+        """ai_text = ai_service.generate_astrology_report(
             chart=chart, 
             full_name=order.full_name, 
             plan_type=order.plan_type
         )
         
-        report_repo.update_content(report_id=report.id, astral_data=chart, ai_content=ai_text)
-
+        # report_repo.update_content(report_id=report.id, astral_data=chart, ai_content=ai_text)
+        report_repo.update_astral_data_json(report_id=report.id, ai_content=ai_text)
+        
         safe_name = (order.full_name or "user").replace(" ", "-")
         timestamp = datetime.now().strftime("%Y%m%d")
         output_filename = f"report-{safe_name}-{timestamp}.pdf"
@@ -133,9 +144,20 @@ async def process_order(order_id: int, session_id: str):
                 "ai_content": ai_text
             },
             output_filename=output_filename
+        )"""
+        
+        data = {}
+        safe_name = (order.full_name or "user").replace(" ", "-")
+        timestamp = datetime.now().strftime("%Y%m%d")
+        output_filename = f"report-{safe_name}-{timestamp}.pdf"
+
+        pdf_path = pdf_service.generate_astrological_report(
+            template_name="premium_report_test",
+            data=data,
+            output_filename="premium_report_test.pdf"
         )
         
-        duration = round(time.perf_counter() - start_time, 2)
+        duration = round(time_module.perf_counter() - start_time, 2)
         report_repo.finalize_pdf(
             report_id=report.id, 
             pdf_url=pdf_path, 
@@ -182,7 +204,7 @@ async def process_order(order_id: int, session_id: str):
 # STRIPE WEBHOOK
 # ================================
 @router.post("/stripe/webhook")
-async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
     payload = await request.body()
     sig_header = request.headers.get("stripe-signature")
 

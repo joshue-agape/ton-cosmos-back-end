@@ -1,88 +1,118 @@
 <!DOCTYPE html>
-<html>
+<html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        /* Styles spécifiques aux clients mail */
         body {
-            font-family: 'Georgia', serif;
-            background-color: #FAF9F6;
-            color: #1A0B2E;
+            font-family: 'Palatino Linotype', 'Book Antiqua', Palatino, serif;
+            background-color: #f4f4f7;
+            color: #2D2438;
             margin: 0;
             padding: 0;
+            -webkit-font-smoothing: antialiased;
+        }
+        .wrapper {
+            width: 100%;
+            background-color: #f4f4f7;
+            padding: 40px 0;
         }
         .container {
             max-width: 600px;
             margin: 0 auto;
-            padding: 40px 20px;
             background-color: #ffffff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
         }
         .header {
             text-align: center;
-            padding-bottom: 30px;
-            border-bottom: 1px solid #D4AF37;
+            padding: 40px 20px;
+            background-color: #1A0B2E; /* Fond sombre royal */
+            color: #D4AF37;
         }
         .logo {
-            font-size: 24px;
+            font-size: 26px;
             font-weight: bold;
-            color: #1A0B2E;
             text-transform: uppercase;
-            letter-spacing: 2px;
+            letter-spacing: 4px;
+            margin: 0;
         }
         .content {
-            padding: 30px 0;
-            line-height: 1.6;
+            padding: 40px 50px;
+            line-height: 1.8;
+            color: #333333;
+        }
+        h1 {
+            font-size: 22px;
+            color: #1A0B2E;
+            font-weight: normal;
+            margin-bottom: 25px;
             text-align: center;
+        }
+        p {
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+        .highlight-box {
+            background-color: #FAF9F6;
+            border: 1px solid #EAE7E0;
+            padding: 20px;
+            border-radius: 6px;
+            text-align: center;
+            margin: 30px 0;
         }
         .footer {
             text-align: center;
-            font-size: 12px;
-            color: #666;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }
-        .button {
-            display: inline-block;
-            padding: 15px 30px;
-            background-color: #1A0B2E;
-            color: #D4AF37 !important;
-            text-decoration: none;
-            border-radius: 5px;
-            font-weight: bold;
-            margin-top: 20px;
+            font-size: 13px;
+            color: #999;
+            padding: 30px;
+            background-color: #FAF9F6;
         }
         .signature {
-            margin-top: 30px;
-            font-style: italic;
+            margin-top: 40px;
+            border-top: 1px solid #eee;
+            padding-top: 20px;
+            font-size: 15px;
+        }
+        .gold-text {
+            color: #B8860B;
+            font-weight: bold;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <div class="logo">Ton Cosmos</div>
-        </div>
-        
-        <div class="content">
-            <h1>Bonjour {{ full_name }},</h1>
-            
-            <p>Le moment est arrivé. L'IA a fini de décoder les astres pour toi.</p>
-            
-            <p>Ton rapport natal personnalisé de 40 à 60 pages est prêt. Tu y trouveras une analyse profonde de ta personnalité, de ta carrière et de tes relations.</p>
-            
-            <p><strong>Ton rapport est joint à cet email en format PDF.</strong></p>
-            
-            <p>Nous te conseillons de le lire au calme, dans un moment d'introspection.</p>
-            
-            <div class="signature">
-                Avec bienveillance,<br>
-                <strong>Indira</strong><br>
-                L'équipe Ton Cosmos
+    <div class="wrapper">
+        <div class="container">
+            <div class="header">
+                <div class="logo">Ton Cosmos</div>
             </div>
-        </div>
+            
+            <div class="content">
+                <h1>Bonjour {{ full_name }},</h1>
+                
+                <p>Nous avons le plaisir de vous annoncer que l'analyse approfondie de votre configuration céleste est terminée.</p>
+                
+                <p>Nos algorithmes ont fini de traiter les données précises de votre naissance pour générer votre <strong>Rapport Natal Haute Définition</strong>. Ce document de plus de 50 pages constitue une cartographie complète des énergies qui structurent votre personnalité, vos ambitions professionnelles et votre dynamique relationnelle.</p>
+                
+                <div class="highlight-box">
+                    <p style="margin:0;">✨ <strong>Votre rapport est disponible en pièce jointe (PDF).</strong></p>
+                </div>
+                
+                <p>L'astrologie est un outil de connaissance de soi. Nous vous invitons à parcourir ces pages lors d'un moment de calme, propice à la réflexion et à l'introspection.</p>
+                
+                <div class="signature">
+                    Bien chaleureusement,<br><br>
+                    <strong>Indira</strong><br>
+                    <em>Conseillère Ton Cosmos</em>
+                </div>
+            </div>
 
-        <div class="footer">
-            <p>&copy; {{ current_year }} JVN Lab - Ton Cosmos</p>
-            <p>Vous recevez cet email suite à votre commande sur notre plateforme.</p>
+            <div class="footer">
+                <p>&copy; {{ current_year }} JVN Lab — Ton Cosmos</p>
+                <p style="font-size: 11px;">Cet email vous a été envoyé suite à votre commande. Pour toute question, notre support est à votre disposition.</p>
+            </div>
         </div>
     </div>
 </body>

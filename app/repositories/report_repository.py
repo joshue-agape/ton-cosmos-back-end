@@ -11,7 +11,10 @@ class ReportRepository:
     # ========================================================= #
     """ Initialise une entrée de rapport liée à une commande. """
     def create(self, report_data: ReportCreate) -> AstrologicalReport:
-        db_report = AstrologicalReport(**report_data)
+        data = report_data.model_dump()
+        
+        db_report = AstrologicalReport(**data)
+        
         self.db.add(db_report)
         self.db.commit()
         self.db.refresh(db_report)
@@ -36,7 +39,25 @@ class ReportRepository:
             self.db.commit()
             self.db.refresh(db_report)
         return db_report
+    
+    
+    def update_astral_data_json(self, report_id: int, astral_data: dict) -> Optional[AstrologicalReport]:
+        db_report = self.db.query(AstrologicalReport).get(report_id)
+        if db_report:
+            db_report.astral_data_json = astral_data
+            self.db.commit()
+            self.db.refresh(db_report)
+        return db_report
 
+
+    def update_ai_content_json(self, report_id: int, ai_content: dict) -> Optional[AstrologicalReport]:
+        db_report = self.db.query(AstrologicalReport).get(report_id)
+        if db_report:
+            db_report.ai_content_json = ai_content
+            self.db.commit()
+            self.db.refresh(db_report)
+        return db_report
+    
 
     # ================================================================================= #
     """ Enregistre le lien du PDF final et la durée de génération pour le monitoring. """
@@ -58,3 +79,5 @@ class ReportRepository:
         if db_report:
             db_report.error_log = error_message
             self.db.commit()
+            
+            

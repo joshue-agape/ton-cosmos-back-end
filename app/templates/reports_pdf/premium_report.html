@@ -2,180 +2,194 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
     <style>
+        /* --- Configuration de la Page --- */
         @page {
             size: A4;
-            margin: 0;
-            @bottom-right {
-                content: "Page " counter(page);
+            margin: 2cm 1.5cm;
+            @bottom-center {
+                content: "— " counter(page) " —";
                 font-family: 'Cormorant Garamond', serif;
                 font-size: 10pt;
-                color: #D4AF37;
-                padding-right: 2cm;
-                padding-bottom: 1cm;
-            }
-            @bottom-left {
-                content: "Ton Cosmos — Rapport Astral";
-                font-family: 'Cormorant Garamond', serif;
-                font-size: 10pt;
-                color: #D4AF37;
-                padding-left: 2cm;
-                padding-bottom: 1cm;
+                color: #999;
             }
         }
 
-        /* --- Couleurs & Typographie --- */
         :root {
-            --violet-deep: #1A0B2E;
-            --gold: #D4AF37;
-            --off-white: #FAF9F6;
+            --dark: #1a1a1a;
+            --gold: #c5a059; /* Un doré plus sobre, type "champagne" */
+            --grey: #f4f4f4;
+            --text: #333333;
         }
 
         body {
             font-family: 'Cormorant Garamond', serif;
-            background-color: var(--off-white);
-            color: var(--violet-deep);
+            color: var(--text);
             line-height: 1.6;
             margin: 0;
             padding: 0;
+            background: white;
         }
 
-        /* --- Page de Couverture --- */
-        .cover-page {
-            height: 297mm;
-            width: 210mm;
-            background-color: var(--violet-deep);
-            color: var(--gold);
-            text-align: center;
+        /* --- Utilitaires --- */
+        .page-break { page-break-after: always; }
+        .text-center { text-align: center; }
+
+        /* --- Couverture --- */
+        .cover {
+            height: 23cm;
             display: flex;
             flex-direction: column;
-            justify-content: center;
-            page-break-after: always;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--grey);
+            padding: 1cm 2cm;
         }
 
-        .cover-title {
-            font-size: 48pt;
-            margin-bottom: 10px;
+        .cover-header {
             text-transform: uppercase;
-            letter-spacing: 5px;
-        }
-
-        .cover-subtitle {
-            font-size: 20pt;
-            font-style: italic;
-            border-top: 1px solid var(--gold);
-            border-bottom: 1px solid var(--gold);
-            display: inline-block;
-            padding: 10px 40px;
-            margin-top: 20px;
-        }
-
-        .user-info {
-            margin-top: 100px;
-            font-size: 16pt;
-            color: var(--off-white);
-        }
-
-        /* --- Contenu Global --- */
-        .content-wrapper {
-            padding: 2cm;
-        }
-
-        .section {
-            page-break-inside: avoid;
-            margin-bottom: 40px;
-            text-align: justify;
-        }
-
-        h1, h2, h3 {
-            color: var(--violet-deep);
-            border-bottom: 1px solid var(--gold);
-            padding-bottom: 5px;
-        }
-
-        .ornament {
-            text-align: center;
+            letter-spacing: 8px;
+            font-family: 'Montserrat', sans-serif;
+            font-size: 12pt;
             color: var(--gold);
-            font-size: 24pt;
-            margin: 30px 0;
         }
 
-        /* --- La Roue Astrale --- */
-        .chart-container {
+        .cover-main h1 {
+            font-size: 55pt;
+            font-weight: 300;
+            margin: 0;
+            color: var(--dark);
+        }
+
+        .cover-footer {
+            border-top: 1px solid var(--gold);
+            padding-top: 1cm;
+            width: 100%;
             text-align: center;
-            margin: 40px 0;
-            page-break-inside: avoid;
         }
 
-        .chart-placeholder {
-            width: 15cm;
-            height: 15cm;
-            border: 2px solid var(--gold);
+        .user-name {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 18pt;
+            text-transform: uppercase;
+            letter-spacing: 3px;
+        }
+
+        /* --- Sommaire / Intro --- */
+        .chart-section {
+            text-align: center;
+            margin: 2cm 0;
+        }
+
+        .chart-img {
+            max-width: 80%;
+            height: auto;
             border-radius: 50%;
-            margin: auto;
+            filter: grayscale(20%); /* Pour le côté pro/sobre */
+            border: 1px solid var(--grey);
+        }
+
+        /* --- Structure du Contenu (Optimisée pour le nouveau JSON) --- */
+        .section-title {
+            font-size: 28pt;
+            color: var(--dark);
+            border-bottom: 0.5pt solid var(--gold);
+            margin-top: 2cm;
+            margin-bottom: 1cm;
+            font-weight: 400;
+        }
+
+        .block-container {
+            margin-bottom: 2.5rem;
+            page-break-inside: avoid; /* Évite de couper un bloc entre deux pages */
+        }
+
+        .block-subtitle {
+            font-family: 'Montserrat', sans-serif;
+            font-size: 11pt;
+            text-transform: uppercase;
+            color: var(--gold);
+            letter-spacing: 2px;
+            margin-bottom: 1rem;
+            display: block;
+        }
+
+        .paragraph {
+            font-size: 13pt;
+            margin-bottom: 1rem;
+            text-align: justify;
+            hyphens: auto;
+        }
+
+        .summary-box {
+            background-color: var(--grey);
+            padding: 1.5rem;
+            margin-top: 2rem;
+            font-style: italic;
+            border-left: 3px solid var(--gold);
         }
 
     </style>
 </head>
 <body>
-    <!-- Page de Couverture -->
-    <div class="cover-page">
-        <div class="cover-title">Ton Cosmos</div>
-        <div class="cover-subtitle">Ton Rapport Astral Premium</div>
+
+    <!-- PAGE DE COUVERTURE -->
+    <div class="cover">
+        <div class="cover-header">Indira Astrology</div>
         
-        <div class="user-info">
-            <p>Préparé pour <strong>{{ full_name }}</strong></p>
-            <p>Né(e) le {{ birth_date }} à {{ birth_time }}</p>
-            <p>Signe Solaire : {{ birth_chart.planets.Soleil.sign }}</p>
+        <div class="cover-main">
+            <h1>L'Équilibre du<br>Cosmos</h1>
+            <p class="text-center" style="font-size: 18pt; color: var(--gold);">— Votre Thème Natal —</p>
+        </div>
+
+        <div class="cover-footer">
+            <div class="user-name">{{ full_name }}</div>
+            <p style="font-size: 11pt; color: #666;">
+                {{ birth_date }} — {{ birth_city }}<br>
+                Généré le {{ now_date }}
+            </p>
         </div>
     </div>
+    <div class="page-break"></div>
 
-    <!-- Contenu du Rapport -->
-    <div class="content-wrapper">
-        
-        <!-- Introduction & Roue -->
-        <div class="section">
-            <h2>Ta Carte du Ciel</h2>
-            <div class="chart-container">
-                <img src="{{ chart_image_url }}" class="chart-placeholder" alt="Roue du thème natal">
-            </div>
-            <p class="ornament">✧ ✧ ✧</p>
+    <!-- CARTE DU CIEL -->
+    <div class="chart-section">
+        <h2 style="font-family: 'Montserrat'; font-weight: 300; letter-spacing: 4px;">VOTRE CARTE DU CIEL</h2>
+        <div class="chart-img">
+            <img src="https://thumbs.dreamstime.com/b/une-image-sur-le-th%C3%A8me-c%C3%A9leste-pr%C3%A9sente-carte-astrologique-complexe-superpos%C3%A9e-%C3%A0-un-412848781.jpg" class="chart-img" >
         </div>
+        <p style="max-width: 60%; margin: 1cm auto; font-style: italic; color: #555;">
+            "Le ciel au moment de votre premier souffle est une empreinte unique, une carte de votre potentiel infini."
+        </p>
+    </div>
+    <div class="page-break"></div>
 
-        <!-- Portrait -->
-        <div class="section">
-            <h2>I. Ton Portrait Astral</h2>
-            <p>{{ ai_content.portrait | safe }}</p>
+    <!-- BOUCLE SUR LES SECTIONS (Basé sur l'optimisation précédente) -->
+    {% for section_id, section in ai_content.sections.items() %}
+    <div class="section">
+        <h2 class="section-title">{{ section.title }}</h2>
+
+        {% for block in section.blocks %}
+        <div class="block-container">
+            <span class="block-subtitle">{{ block.subtitle }}</span>
+            {% for p in block.paragraphs %}
+                <p class="paragraph">{{ p }}</p>
+            {% endfor %}
         </div>
+        {% endfor %}
 
-        <!-- Amour -->
-        <div class="section">
-            <h2>II. Amour & Relations</h2>
-            <p>{{ ai_content.amour | safe }}</p>
-        </div>
-
-        <!-- Carrière -->
-        <div class="section">
-            <h2>III. Mission de Vie & Carrière</h2>
-            <p>{{ ai_content.carriere | safe }}</p>
-        </div>
-
-        <!-- Ombres -->
-        <div class="section">
-            <h2>IV. Ombres & Défis</h2>
-            <p>{{ ai_content.defis | safe }}</p>
-        </div>
-
-        <!-- Prédictions -->
-        {% if plan_type == 'Complet' %}
-        <div class="section" style="page-break-before: always;">
-            <h2>V. Tes Prédictions sur 12 mois</h2>
-            <p>{{ ai_content.predictions | safe }}</p>
+        {% if section.summary %}
+        <div class="summary-box">
+            <strong>L'Essence d'Indira :</strong> {{ section.summary }}
         </div>
         {% endif %}
-
     </div>
+    
+    {% if not loop.last %}
+    <div class="page-break"></div>
+    {% endif %}
+    {% endfor %}
 
 </body>
 </html>

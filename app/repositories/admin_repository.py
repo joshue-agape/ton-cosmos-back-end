@@ -19,8 +19,8 @@ class AdminRepository:
         return self.db.query(Admin).filter(Admin.id == admin_id).first()
 
 
-    # ========================================= #
-    """ Récupère l'administrateur par son ID. """
+    # ================================================================================ #
+    """ Récupère l'administrateur par son jeton de reinitialisation de mot de passe. """
     def get_by_reset_token(self, token: str) -> Optional[Admin]:
         return self.db.query(Admin).filter(Admin.reset_password_token == token).first()
 

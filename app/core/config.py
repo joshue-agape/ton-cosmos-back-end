@@ -5,11 +5,12 @@ from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
-    app_name: str = 'ton_cosmos_api'
+    app_name: str
     ENV: str = "development"
     debug: bool = True
     version: str = "1.0.0"
 
+    SESSION_SECRET: str
     CORS_ORIGINS: List[str]
     FRONTEND_URL: str
     JWT_SECRET_KEY: str

@@ -67,6 +67,21 @@ def get_orders(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
         message="Orders lists"
     )
 
+# ==================================================================== #
+""" Récupère toutes les commandes pour le Dashboard Admin de Joseph. """
+@router.get("/find-all-with-report")
+def get_orders_with_report(skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    repo = OrderRepository(db)
+    orders = repo.get_all_with_report(skip=skip, limit=limit)
+    
+    data_json = jsonable_encoder(orders)
+    
+    return ServiceResponse.success(
+        status_code=200,
+        data=data_json,
+        message="Orders lists"
+    )
+    
 
 # ================================================================ #
 """ Télécharge le rapport PDF associé à une commande via son ID. """
