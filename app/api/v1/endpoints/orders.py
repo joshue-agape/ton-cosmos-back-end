@@ -3,24 +3,60 @@ from sqlalchemy.orm import Session
 from app.database.deps import get_db
 from fastapi.responses import FileResponse
 from fastapi.encoders import jsonable_encoder
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Request
 from app.services.response_service import ServiceResponse
 from app.repositories.order_repository import OrderRepository
 from app.repositories.report_repository import ReportRepository
+from app.repositories.admin_repository import AdminRepository
 
 from app.schemas.order import *
 from app.schemas.report import *
 
+from app.services.utility_service import *
 from app.services.astrology_service import *
 from app.services.stripe_service import *
 from app.services.email_service import *
 from app.services.pdf_service import *
 
 router = APIRouter()
+jwt_service = JWTService()
 stripe_service = StripeService()
 astrology_service = AstrologyService()
 pdf_service = PDFService()
 
+
+def VerifyUser(request: Request, db: Session = Depends(get_db) ):
+    admin_repo = AdminRepository(db)
+    
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        return ServiceResponse.error("Jeton de rafraîchissement manquant", 401)
+    
+    refresh_payload = jwt_service.decode_token(refresh_token)
+    
+    if not refresh_payload or refresh_payload.get("type") != "refresh":
+        return ServiceResponse.error(message="Jeton de rafraîchissement invalide", status_code=401)
+
+    exp_timestamp = refresh_payload.get("exp")
+
+    if not exp_timestamp:
+        return ServiceResponse.error(message="Date d'expiration invalide", status_code=401)
+
+    user_id = refresh_payload.get("sub")
+
+    if not user_id:
+        return ServiceResponse.error(message="Contenu du jeton invalide", status_code=401)
+    
+    try:
+        user_id = int(user_id)
+    except ValueError:
+        return ServiceResponse.error(message="Identifiant utilisateur invalide", status_code=401)
+    
+    admin = admin_repo.get_by_id(user_id)
+
+    if not admin:
+        return ServiceResponse.error(message="Administrateur introuvable", status_code=404)
+    
 
 @router.post("/create", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
 def create_order(body: OrderPayload, db: Session = Depends(get_db)):
@@ -51,9 +87,11 @@ def create_order(body: OrderPayload, db: Session = Depends(get_db)):
 
 
 @router.get("/find-all")
-def get_orders(db: Session = Depends(get_db)):
+def get_orders(request: Request, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    VerifyUser(request=request, db=db)
+    
     repo = OrderRepository(db)
-    orders = repo.get_all()
+    orders = repo.get_all(skip=skip, limit=limit)
     
     data_json = jsonable_encoder(orders)
     
@@ -65,9 +103,11 @@ def get_orders(db: Session = Depends(get_db)):
 
 
 @router.get("/find-all-with-report")
-def get_orders_with_report(db: Session = Depends(get_db)):
+def get_orders_with_report(request: Request, skip: int = 0, limit: int = 100, db: Session = Depends(get_db)):
+    VerifyUser(request=request, db=db)
+    
     repo = OrderRepository(db)
-    orders = repo.get_all_with_report()
+    orders = repo.get_all_with_report(skip=skip, limit=limit)
     
     data_json = jsonable_encoder(orders)
     
@@ -79,7 +119,9 @@ def get_orders_with_report(db: Session = Depends(get_db)):
     
 
 @router.get("/report/download/pdf-report/{order_id}")
-def download_report(order_id: int, db: Session = Depends(get_db)):
+def download_report(order_id: int, request: Request, db: Session = Depends(get_db)):
+    VerifyUser(request=request, db=db)
+    
     order_repo = OrderRepository(db)
     report_repo = ReportRepository(db)
 
@@ -104,8 +146,11 @@ def download_report(order_id: int, db: Session = Depends(get_db)):
     
     
 @router.get("/stats")
-async def read_dashboard_stats(db: Session = Depends(get_db)):
+async def read_dashboard_stats(request: Request, db: Session = Depends(get_db)):
+    VerifyUser(request=request, db=db)
+    
     order_repo = OrderRepository(db)
+    
     s = order_repo.get_dashboard_stats()
     
     stats = [
@@ -144,3 +189,39 @@ async def read_dashboard_stats(db: Session = Depends(get_db)):
         data=data_json
     )
     
+
+@router.delete("/delete/{order_id}")
+async def delete_order(order_id: int, request: Request, db: Session = Depends(get_db)):
+    VerifyUser(request=request, db=db)
+    
+    order_repo = OrderRepository(db)
+    
+    order = order_repo.get_by_id(order_id)
+    if not order:
+        return ServiceResponse.error(
+            status_code=404,
+            message="Commande introuvable",
+            data=None
+        )
+    
+    try:
+        success = order_repo.delete_by_id(order_id)
+        if not success:
+             return ServiceResponse.error(
+                status_code=500,
+                message="Erreur lors de la suppression",
+                data=None
+            )
+            
+        return ServiceResponse.success(
+            status_code=200,
+            message=f"Commande {order_id} et documents associés supprimés avec succès",
+            data=None
+        )
+    except Exception as e:
+        return ServiceResponse.error(
+            status_code=500,
+            message=f"Erreur serveur : {str(e)}",
+            data=None
+        )
+        

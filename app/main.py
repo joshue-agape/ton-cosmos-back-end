@@ -28,7 +28,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,                # Liste des domaines autorisés (ex: localhost:3000)
     allow_credentials=True,                             # Autorise l'envoi de cookies et headers d'auth
-    allow_methods=["POST","GET","PUT","PATCH"],         # Verbes HTTP autorisés
+    allow_methods=["POST","GET","PUT","PATCH", "DELETE"],         # Verbes HTTP autorisés
     allow_headers=["*"],                                # Accepte tous les types de headers
 )
 

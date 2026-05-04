@@ -23,7 +23,7 @@ class ReportRepository:
         return self.db.query(AstrologicalReport).filter(
             AstrologicalReport.order_id == order_id
         ).first()
-
+    
 
     def update_content(self, report_id: int, astral_data: dict, ai_content: dict) -> Optional[AstrologicalReport]:
         db_report = self.db.query(AstrologicalReport).get(report_id)

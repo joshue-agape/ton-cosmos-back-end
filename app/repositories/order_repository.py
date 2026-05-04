@@ -37,6 +37,15 @@ class OrderRepository:
         return self.db.query(Order).filter(Order.id == order_id).first()
 
 
+    def delete_by_id(self, order_id: int) -> bool:
+        order = self.db.query(Order).get(order_id)
+        if order:
+            self.db.delete(order)
+            self.db.commit()
+            return True
+        return False
+
+
     def get_by_stripe_session(self, session_id: str) -> Optional[Order]:
         return self.db.query(Order).filter(Order.stripe_session_id == session_id).first()
 
@@ -45,15 +54,16 @@ class OrderRepository:
         return self.db.query(Order).filter(Order.email == email).all()
     
 
-    def get_all(self) -> List[Order]:
-        return self.db.query(Order).order_by(Order.created_at.desc()).all()
+    def get_all(self, skip: int = 0, limit: int = 10000) -> List[Order]:
+        return self.db.query(Order).order_by(Order.created_at.desc()).offset(skip).limit(limit).all()
 
 
-    def get_all_with_report(self) -> List[Order]:
+    def get_all_with_report(self, skip: int = 0, limit: int = 10000) -> List[Order]:
         return (
             self.db.query(Order)
             .options(joinedload(Order.report))
             .order_by(Order.created_at.desc())
+            .offset(skip).limit(limit)
             .all()
         )
 
