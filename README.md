@@ -2,9 +2,9 @@
 #                 DOCUMENTATION TECHNIQUE COMPLÈTE DU PROJET                  #
 ###############################################################################
 
-===============================================================================
+==========================================================
 1. GUIDE D'INSTALLATION ET D'EXPLOITATION (README_INSTALL)
-===============================================================================
+==========================================================
 
 Ce document détaille les procédures nécessaires pour l'initialisation, le 
 développement et le déploiement de l'application, que ce soit en environnement 
@@ -127,9 +127,9 @@ Le serveur utilise Uvicorn avec l'option de rechargement automatique pour facili
     pytest
     ```
 
-===============================================================================
+==========================================================
 2. GUIDE DES WEBHOOKS STRIPE (README_STRIPE)
-===============================================================================
+==========================================================
 
 Procédure pour tester la réception des paiements en local.
 
@@ -179,9 +179,9 @@ FastAPI est actif dans un autre, vous pouvez simuler des événements réels.
     stripe trigger checkout.session.completed --override checkout_session:metadata.order_id="1"
     ```
 
-===============================================================================
+==========================================================
 3. DOCUMENTATION TECHNIQUE : AUTH_MIDDLEWARE
-===============================================================================
+==========================================================
 
 # Documentation Technique : AuthMiddleware
 
@@ -218,9 +218,9 @@ Pour approfondir les concepts de sécurité et les technologies utilisés dans c
 * [OWASP - Cheat Sheet sur l'Authentification](https://cheatsheetseries.owasp.org/cheatsheets/Authentication_Cheat_Sheet.html)
 
 
-===============================================================================
+==========================================================
 4. RÉCAPITULATIF DES COMMANDES ESSENTIELLES
-===============================================================================
+==========================================================
 
 - Docker : docker compose up --build
 - Serveur local : uvicorn app.main:app --reload
@@ -228,6 +228,6 @@ Pour approfondir les concepts de sécurité et les technologies utilisés dans c
 - Migrations : alembic upgrade head
 - Tests : pytest
 
--------------------------------------------------------------------------------
-Fin du document - Dernière mise à jour : 04 Mai 2026 19:42
--------------------------------------------------------------------------------
+------------------------------------------------------------
+Fin du document - Dernière mise à jour : 04 Mai 2026 19:50
+------------------------------------------------------------
