@@ -14,6 +14,7 @@ router = APIRouter()
 
 astrology_service = AstrologyService()
 pdf_service = PDFService()
+claude_service = AIService()
 
 @router.get("/")
 def health_check():
@@ -55,8 +56,8 @@ def testCalcule(body: BodyTest):
 
 
 @router.post("/get-ia-response")
-def testCalcule():
-    claude_ai = AIService.test_claude_connection()
+def testGenerateIA():
+    claude_ai = claude_service.test_claude_connection()
     return claude_ai
 
 

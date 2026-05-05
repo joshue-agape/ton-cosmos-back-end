@@ -13,6 +13,7 @@ app = FastAPI(
     debug=settings.debug
 )
 
+
 # Configuration du middleware de session (Starlette)
 # Indispensable pour gérer des données persistantes côté serveur via un cookie signé
 app.add_middleware(

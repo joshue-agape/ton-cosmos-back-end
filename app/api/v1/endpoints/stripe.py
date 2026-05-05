@@ -1,9 +1,9 @@
 import stripe
 import time as time_module
-from datetime import datetime, time as datetime_time
+from datetime import datetime
 from sqlalchemy.orm import Session
 from app.database.deps import get_db
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends, Response, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect, Request
 from app.core.config import settings
 from pydantic import BaseModel
 from app.services.pdf_service import PDFService
@@ -16,6 +16,7 @@ from app.services.response_service import ServiceResponse
 from app.repositories.order_repository import OrderRepository
 from app.repositories.report_repository import ReportRepository
 from app.services.response_service import ServiceResponse
+from app.core.websocket_manager import *
 
 from app.schemas.report import *
 
@@ -72,6 +73,16 @@ async def create_checkout(body: OrderRequest):
         )
         
 
+@router.websocket("/ws/{session_id}")
+async def websocket_endpoint(websocket: WebSocket, session_id: str):
+    await manager.connect(session_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text() 
+    except WebSocketDisconnect:
+        manager.disconnect(session_id)
+        
+        
 async def process_order(order_id: int, session_id: str):
     db: Session = next(get_db())
     order_repo = OrderRepository(db)
@@ -89,6 +100,10 @@ async def process_order(order_id: int, session_id: str):
 
     order.stripe_session_id = session_id
     order_repo.update_status(order.id, OrderStatus.PROCESSING)
+    
+    websocket_id = f"ton-cosmos-{order.id}"
+    
+    await manager.send_update(websocket_id, { "step": 1, "next_task": "Analyse des positions planétaires" })
     
     report_data = ReportCreate(
         order_id=order.id,
@@ -113,6 +128,8 @@ async def process_order(order_id: int, session_id: str):
         )
         
         report_repo.update_astral_data_json(report_id=report.id, astral_data=chart)
+        
+        await manager.send_update(websocket_id, { "step": 2, "next_task": "Analyse par IA" })
 
         """ai_text = ai_service.generate_astrology_report(
             chart=chart, 
@@ -122,6 +139,8 @@ async def process_order(order_id: int, session_id: str):
         
         # report_repo.update_content(report_id=report.id, astral_data=chart, ai_content=ai_text)
         report_repo.update_astral_data_json(report_id=report.id, ai_content=ai_text)
+        
+        await manager.send_update(websocket_id, { "step": 3, "next_task": "Génération du rapport PDF" })
         
         safe_name = (order.full_name or "user").replace(" ", "-")
         timestamp = datetime.now().strftime("%Y%m%d")
@@ -156,6 +175,8 @@ async def process_order(order_id: int, session_id: str):
             duration=duration
         )
         
+        await manager.send_update(websocket_id, { "step": 4, "next_task": "Envoi par e-mail" })
+        
         email_data = {
             "full_name": order.full_name,
             "current_year": datetime.now().year
@@ -171,6 +192,9 @@ async def process_order(order_id: int, session_id: str):
         
         if email_result["success"]:
             order_repo.update_status(order.id, OrderStatus.COMPLETED)
+            
+            await manager.send_update(websocket_id, { "step": 5, "next_task": "Finished" })
+            
         else:
             error_message = f"Email failed: {email_result.get('message')}"
             order_repo.update_status(order.id, OrderStatus.FAILED)
