@@ -3,7 +3,7 @@ import time as time_module
 from datetime import datetime
 from sqlalchemy.orm import Session
 from app.database.deps import get_db
-from fastapi import APIRouter, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect, Request
+from fastapi import APIRouter, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
 from app.core.config import settings
 from pydantic import BaseModel
 from app.services.pdf_service import PDFService
@@ -101,9 +101,7 @@ async def process_order(order_id: int, session_id: str):
     order.stripe_session_id = session_id
     order_repo.update_status(order.id, OrderStatus.PROCESSING)
     
-    websocket_id = f"ton-cosmos-{order.id}"
-    
-    await manager.send_update(websocket_id, { "step": 1, "next_task": "Analyse des positions planétaires" })
+    await manager.send_update(session_id, { "step": 1, "status": True })
     
     report_data = ReportCreate(
         order_id=order.id,
@@ -129,18 +127,46 @@ async def process_order(order_id: int, session_id: str):
         
         report_repo.update_astral_data_json(report_id=report.id, astral_data=chart)
         
-        await manager.send_update(websocket_id, { "step": 2, "next_task": "Analyse par IA" })
+        await manager.send_update(session_id, { "step": 2, "status": True })
+        
+        BASE_SECTIONS = [
+            "introduction", 
+            "piliers", 
+            "mental", 
+            "dominantes", 
+            "maisons_vie_1", 
+            "maisons_vie_2", 
+            "amour", 
+            "mission", 
+            "destin",
+            "conseils", 
+            "synthese"
+        ]
 
-        """ai_text = ai_service.generate_astrology_report(
-            chart=chart, 
-            full_name=order.full_name, 
-            plan_type=order.plan_type
-        )
+        EXTRA_COMPLETE = [
+            "ombres", 
+            "aspects_majeurs", 
+            "predictions"
+        ]
+
+        if order.plan_type.lower() == "complet":
+            sections_to_generate = BASE_SECTIONS[:-2] + EXTRA_COMPLETE + BASE_SECTIONS[-2:]
+        else:
+            sections_to_generate = BASE_SECTIONS
+            
+        final_report_sections = []
         
-        # report_repo.update_content(report_id=report.id, astral_data=chart, ai_content=ai_text)
-        report_repo.update_astral_data_json(report_id=report.id, ai_content=ai_text)
+        for section_id in enumerate(sections_to_generate):
+            print(f"STEP = {section_id}")
+
+            section_json = ai_service.generate_astrology_report(chart, order.full_name, section_id)
+            final_report_sections.append(section_json)
+
+        ai_content_final = { "sections": final_report_sections }
         
-        await manager.send_update(websocket_id, { "step": 3, "next_task": "Génération du rapport PDF" })
+        await manager.send_update(session_id, { "step": 3, "status": True })
+        
+        report_repo.update_ai_content_json(report_id=report.id, ai_content=ai_content_final)
         
         safe_name = (order.full_name or "user").replace(" ", "-")
         timestamp = datetime.now().strftime("%Y%m%d")
@@ -150,21 +176,14 @@ async def process_order(order_id: int, session_id: str):
             template_name="premium_report",
             data={
                 "full_name": order.full_name,
-                "birth_chart": chart,
-                "ai_content": ai_text
+                "birth_chart": chart.get("birth_chart", {}),
+                "ai_content": ai_content_final,
+                "forecast": chart.get("forecast", []),
+                "birth_date_info": f"{order.birth_date} {order.birth_time}",
+                "current_date": datetime.now().strftime("%d/%m/%Y"),
+                "chart_image_url": chart.get("chart_image_url", "")
             },
             output_filename=output_filename
-        )"""
-        
-        data = {}
-        safe_name = (order.full_name or "user").replace(" ", "-")
-        timestamp = datetime.now().strftime("%Y%m%d")
-        output_filename = f"report-{safe_name}-{timestamp}.pdf"
-
-        pdf_path = pdf_service.generate_astrological_report(
-            template_name="premium_report_test",
-            data=data,
-            output_filename="premium_report_test.pdf"
         )
         
         duration = round(time_module.perf_counter() - start_time, 2)
@@ -175,7 +194,7 @@ async def process_order(order_id: int, session_id: str):
             duration=duration
         )
         
-        await manager.send_update(websocket_id, { "step": 4, "next_task": "Envoi par e-mail" })
+        await manager.send_update(session_id, { "step": 4, "status": True })
         
         email_data = {
             "full_name": order.full_name,
@@ -193,11 +212,12 @@ async def process_order(order_id: int, session_id: str):
         if email_result["success"]:
             order_repo.update_status(order.id, OrderStatus.COMPLETED)
             
-            await manager.send_update(websocket_id, { "step": 5, "next_task": "Finished" })
+            await manager.send_update(session_id, { "step": 5, "status": True })
             
         else:
             error_message = f"Email failed: {email_result.get('message')}"
             order_repo.update_status(order.id, OrderStatus.FAILED)
+            await manager.send_update(session_id, { "step": 5, "status": False })
 
         if duration > 300:
             print(f"ALERT: Generation took {duration}s for order {order_id}")
@@ -206,6 +226,7 @@ async def process_order(order_id: int, session_id: str):
         error_message = str(e)
         print(f"CRITICAL ERROR [Order {order_id}]: {error_message}")
         order_repo.update_status(order.id, OrderStatus.FAILED)
+        await manager.send_update(session_id, { "step": 2, "status": False })
         
     finally:
         if error_message:
@@ -255,6 +276,6 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
     except ValueError:
         print(f"Erreur: order_id '{order_id}' n'est pas un nombre.")
         return {"status": "invalid_id"}
-
-    return { "status": "success" }
+    
+    return Response(status_code=200)
 

@@ -2,15 +2,14 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
-    <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Montserrat:wght@300;400&display=swap" rel="stylesheet">
     <style>
         /* --- Configuration de la Page --- */
         @page {
             size: A4;
-            margin: 2cm 1.5cm;
+            margin: 1.5cm;
             @bottom-center {
                 content: "— " counter(page) " —";
-                font-family: 'Cormorant Garamond', serif;
+                font-family: serif;
                 font-size: 10pt;
                 color: #999;
             }
@@ -18,178 +17,257 @@
 
         :root {
             --dark: #1a1a1a;
-            --gold: #c5a059; /* Un doré plus sobre, type "champagne" */
-            --grey: #f4f4f4;
-            --text: #333333;
+            --gold: #e79d12;
+            --soft-gold: #e5d1ae;
+            --light-grey: #f9f9f9;
+            --border-color: #e8e8e8;
+            --text: #3d3d3d;
         }
 
         body {
-            font-family: 'Cormorant Garamond', serif;
+            font-family: 'Georgia', serif;
             color: var(--text);
             line-height: 1.6;
             margin: 0;
-            padding: 0;
             background: white;
         }
 
-        /* --- Utilitaires --- */
         .page-break { page-break-after: always; }
         .text-center { text-align: center; }
 
         /* --- Couverture --- */
         .cover {
-            height: 23cm;
+            height: 26cm; /* Légèrement augmenté pour remplir la page */
             display: flex;
             flex-direction: column;
             justify-content: space-between;
             align-items: center;
-            border: 1px solid var(--grey);
-            padding: 1cm 2cm;
+            border: 2px solid var(--gold);
+            padding: 2cm;
+            box-sizing: border-box;
         }
 
         .cover-header {
             text-transform: uppercase;
-            letter-spacing: 8px;
-            font-family: 'Montserrat', sans-serif;
-            font-size: 12pt;
+            letter-spacing: 5px;
+            font-size: 14pt;
             color: var(--gold);
         }
 
         .cover-main h1 {
-            font-size: 55pt;
-            font-weight: 300;
+            font-size: 40pt;
+            font-weight: normal;
             margin: 0;
             color: var(--dark);
-        }
-
-        .cover-footer {
-            border-top: 1px solid var(--gold);
-            padding-top: 1cm;
-            width: 100%;
             text-align: center;
+            line-height: 1.1;
         }
 
         .user-name {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 18pt;
+            font-size: 22pt;
             text-transform: uppercase;
             letter-spacing: 3px;
-        }
-
-        /* --- Sommaire / Intro --- */
-        .chart-section {
-            text-align: center;
-            margin: 2cm 0;
-        }
-
-        .chart-img {
-            max-width: 80%;
-            height: auto;
-            border-radius: 50%;
-            filter: grayscale(20%); /* Pour le côté pro/sobre */
-            border: 1px solid var(--grey);
-        }
-
-        /* --- Structure du Contenu (Optimisée pour le nouveau JSON) --- */
-        .section-title {
-            font-size: 28pt;
-            color: var(--dark);
-            border-bottom: 0.5pt solid var(--gold);
             margin-top: 2cm;
-            margin-bottom: 1cm;
-            font-weight: 400;
+            color: var(--dark);
         }
 
-        .block-container {
-            margin-bottom: 2.5rem;
-            page-break-inside: avoid; /* Évite de couper un bloc entre deux pages */
-        }
-
-        .block-subtitle {
-            font-family: 'Montserrat', sans-serif;
-            font-size: 11pt;
+        /* --- Tableaux et Grilles --- */
+        .section-title {
+            font-size: 18pt;
+            color: var(--dark);
+            border-bottom: 1pt solid var(--gold);
+            margin-bottom: 0.8cm;
+            margin-top: 1cm;
+            padding-bottom: 5px;
             text-transform: uppercase;
+        }
+
+        .grid-2 { 
+            display: table;
+            width: 100%;
+            border-spacing: 10px;
+        }
+        
+        .card {
+            display: table-cell;
+            width: 50%;
+            padding: 12px;
+            background: var(--light-grey);
+            border-left: 3pt solid var(--gold);
+            vertical-align: top;
+        }
+
+        table { width: 100%; border-collapse: collapse; margin: 1cm 0; page-break-inside: auto; }
+        tr { page-break-inside: avoid; page-break-after: auto; }
+        th { text-align: left; padding: 10px; border-bottom: 1pt solid var(--gold); color: #888; font-size: 9pt; text-transform: uppercase; }
+        td { padding: 10px; border-bottom: 0.5pt solid var(--border-color); font-size: 11pt; }
+
+        /* --- Contenu IA --- */
+        .block-container { margin-bottom: 1.5cm; page-break-inside: avoid; }
+        .block-subtitle {
+            font-size: 14pt;
             color: var(--gold);
-            letter-spacing: 2px;
-            margin-bottom: 1rem;
+            margin-bottom: 8px;
             display: block;
+            font-weight: bold;
         }
-
-        .paragraph {
-            font-size: 13pt;
-            margin-bottom: 1rem;
-            text-align: justify;
-            hyphens: auto;
-        }
-
+        .paragraph { margin-bottom: 12px; text-align: justify; }
         .summary-box {
-            background-color: var(--grey);
-            padding: 1.5rem;
-            margin-top: 2rem;
+            background-color: #fcfaf7;
+            padding: 20px;
+            border: 0.5pt solid var(--soft-gold);
             font-style: italic;
-            border-left: 3px solid var(--gold);
+            margin-top: 1cm;
         }
-
     </style>
 </head>
 <body>
 
-    <!-- PAGE DE COUVERTURE -->
+    <!-- PAGE 1: COUVERTURE -->
     <div class="cover">
         <div class="cover-header">Indira Astrology</div>
-        
         <div class="cover-main">
-            <h1>L'Équilibre du<br>Cosmos</h1>
-            <p class="text-center" style="font-size: 18pt; color: var(--gold);">— Votre Thème Natal —</p>
+            <h1>L'ÉQUILIBRE DU<br>COSMOS</h1>
+            <p class="text-center" style="color: var(--gold); font-size: 14pt; margin-top: 10px;">— Votre Thème Natal —</p>
+            <div class="user-name text-center">{{ full_name }}</div>
         </div>
-
-        <div class="cover-footer">
-            <div class="user-name">{{ full_name }}</div>
-            <p style="font-size: 11pt; color: #666;">
-                {{ birth_date }} — {{ birth_city }}<br>
-                Généré le {{ now_date }}
-            </p>
+        <div class="text-center">
+            <p>Né(e) le {{ birth_date_info }}</p>
+            <p style="font-size: 9pt; color: #999;">Document confidentiel — Généré le {{ current_date }}</p>
         </div>
     </div>
     <div class="page-break"></div>
 
-    <!-- CARTE DU CIEL -->
-    <div class="chart-section">
-        <h2 style="font-family: 'Montserrat'; font-weight: 300; letter-spacing: 4px;">VOTRE CARTE DU CIEL</h2>
-        <div class="chart-img">
-            <img src="https://thumbs.dreamstime.com/b/une-image-sur-le-th%C3%A8me-c%C3%A9leste-pr%C3%A9sente-carte-astrologique-complexe-superpos%C3%A9e-%C3%A0-un-412848781.jpg" class="chart-img" >
+    <!-- PAGE 2: CARTE DU CIEL -->
+    {% if chart_image_url %}
+    <div class="text-center">
+        <h2 class="section-title">VOTRE CARTE DU CIEL</h2>
+        <div style="margin: 2cm 0;">
+            <img src="{{ chart_image_url }}" style="width: 14cm; height: 14cm; border-radius: 50%; border: 1px solid var(--soft-gold);">
         </div>
-        <p style="max-width: 60%; margin: 1cm auto; font-style: italic; color: #555;">
-            "Le ciel au moment de votre premier souffle est une empreinte unique, une carte de votre potentiel infini."
-        </p>
+        <p style="margin-top: 1cm; font-style: italic; color: #666;">"Les astres inclinent, mais ils ne déterminent pas."</p>
     </div>
-    <div class="page-break"></div>
-
-    <!-- BOUCLE SUR LES SECTIONS (Basé sur l'optimisation précédente) -->
-    {% for section_id, section in ai_content.sections.items() %}
-    <div class="section">
-        <h2 class="section-title">{{ section.title }}</h2>
-
-        {% for block in section.blocks %}
-        <div class="block-container">
-            <span class="block-subtitle">{{ block.subtitle }}</span>
-            {% for p in block.paragraphs %}
-                <p class="paragraph">{{ p }}</p>
-            {% endfor %}
-        </div>
-        {% endfor %}
-
-        {% if section.summary %}
-        <div class="summary-box">
-            <strong>L'Essence d'Indira :</strong> {{ section.summary }}
-        </div>
-        {% endif %}
-    </div>
-    
-    {% if not loop.last %}
     <div class="page-break"></div>
     {% endif %}
-    {% endfor %}
+
+    <!-- SECTION I: POSITIONS PLANÉTAIRES -->
+    <div class="section">
+        <h2 class="section-title">I. Positions Planétaires</h2>
+        <div class="grid-2">
+            {% if birth_chart and birth_chart.planets %}
+                {% for name, data in birth_chart.planets.items() %}
+                    <div class="card">
+                        <strong style="color: var(--gold); font-size: 9pt; text-transform: uppercase;">{{ name }}</strong><br>
+                        <span style="font-size: 12pt;">{{ data.sign }}</span> <br>
+                        <span style="color: #888; font-size: 10pt;">Position : {{ data.deg }}°</span>
+                    </div>
+                    {% if loop.index is even and not loop.last %}
+                        </div><div class="grid-2" style="margin-top: 10px;">
+                    {% endif %}
+                {% endfor %}
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- SECTION II: MAISONS -->
+    <div class="section">
+        <h2 class="section-title">II. Maisons Astrologiques</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Maison</th>
+                    <th>Signe du Zodiaque</th>
+                    <th>Position Exacte</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if birth_chart and birth_chart.houses %}
+                    {% for num, data in birth_chart.houses.items() %}
+                    <tr>
+                        <td><strong>Maison {{ num }}</strong></td>
+                        <td>{{ data.sign }}</td>
+                        <td>{{ data.deg }}°</td>
+                    </tr>
+                    {% endfor %}
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    <div class="page-break"></div>
+
+    <!-- SECTION III: ANALYSE DE L'IA -->
+    <!-- On vérifie si ai_content est un objet avec des sections ou du texte brut -->
+    {% if ai_content %}
+        {% if ai_content.sections %}
+            {% for section in ai_content.sections %}
+            <div class="section">
+                <h2 class="section-title">{{ section.title }}</h2>
+                
+                {% for block in section.blocks %}
+                <div class="block-container">
+                    <span class="block-subtitle">{{ block.subtitle }}</span>
+                    {% for para in block.paragraphs %}
+                        <p class="paragraph">{{ para }}</p>
+                    {% endfor %}
+                    
+                    {% if block.conseil %}
+                        <p style="color: #444; font-size: 10.5pt; border-left: 2px solid var(--gold); padding-left: 15px; margin-top: 15px; font-style: italic;">
+                            <strong>Conseil :</strong> {{ block.conseil }}
+                        </p>
+                    {% endif %}
+                </div>
+                {% endfor %}
+
+                {% if section.summary %}
+                <div class="summary-box">
+                    <strong>L'Essence de cette analyse :</strong><br>
+                    {{ section.summary }}
+                </div>
+                {% endif %}
+            </div>
+            <div class="page-break"></div>
+            {% endfor %}
+        {% else %}
+            <!-- Cas de secours si ai_content est juste une chaîne de caractères -->
+            <div class="section">
+                <h2 class="section-title">Analyse Personnalisée</h2>
+                <div class="paragraph">{{ ai_content | replace('\n', '<br>') | safe }}</div>
+            </div>
+            <div class="page-break"></div>
+        {% endif %}
+    {% endif %}
+
+    <!-- SECTION IV: PRÉVISIONS -->
+    <div class="section">
+        <h2 class="section-title">III. Calendrier des Transits</h2>
+        <p style="font-size: 10pt; color: #666; margin-bottom: 20px;">Voici vos mouvements planétaires majeurs pour les mois à venir :</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Mois</th>
+                    <th>Jupiter <span style="font-size: 8pt; font-weight: normal;">(Chance)</span></th>
+                    <th>Saturne <span style="font-size: 8pt; font-weight: normal;">(Structure)</span></th>
+                    <th>Pluton <span style="font-size: 8pt; font-weight: normal;">(Transformation)</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if forecast %}
+                    {% for item in forecast %}
+                    <tr>
+                        <td><strong>{{ item.month }}</strong></td>
+                        <td>{{ item.positions.Jupiter.sign }}</td>
+                        <td>{{ item.positions.Saturne.sign }}</td>
+                        <td>{{ item.positions.Pluton.sign }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center">Données de prévisions non disponibles pour cette période.</td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
 
 </body>
 </html>

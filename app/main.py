@@ -1,4 +1,4 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from app.middleware.auth_middleware import AuthMiddleware
 from starlette.middleware.sessions import SessionMiddleware
@@ -12,8 +12,8 @@ app = FastAPI(
     version=settings.version,
     debug=settings.debug
 )
-
-
+        
+        
 # Configuration du middleware de session (Starlette)
 # Indispensable pour gérer des données persistantes côté serveur via un cookie signé
 app.add_middleware(
@@ -40,7 +40,7 @@ app.include_router(api_router, prefix="/api/v1")
 # Middleware d'Authentification personnalisé
 # Ce middleware intercepte les requêtes pour vérifier la validité des tokens
 # Note : Il est ajouté en dernier car l'ordre d'exécution des middlewares est LIFO (Last In, First Out)
-app.add_middleware(
-    AuthMiddleware,
-    public_paths=[],
-)
+# app.add_middleware(
+#     AuthMiddleware,
+#     public_paths=[],
+# )
