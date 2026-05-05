@@ -18,7 +18,7 @@ class AIService:
         
         try:
             response = self.client.messages.create(
-                model="claude-3-haiku-20240307", 
+                model="claude-opus-4-6", 
                 max_tokens=200,
                 temperature=0,
                 system=f"Réponds uniquement par un JSON valide respectant cette structure: {json.dumps(test_schema)}",
@@ -81,7 +81,7 @@ Le JSON doit suivre strictement cette hiérarchie pour chaque section :
 """
 
         response = self.client.messages.create(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-opus-4-6",
             max_tokens=8192,
             temperature=0.7,
             system=f"Tu es Indira. Réponds exclusivement en JSON pur respectant cette interface: {json.dumps(response_schema)}",
