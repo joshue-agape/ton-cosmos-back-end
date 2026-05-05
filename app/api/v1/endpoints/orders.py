@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.database.deps import get_db
 from fastapi.responses import FileResponse
 from fastapi.encoders import jsonable_encoder
-from fastapi import APIRouter, Depends, status, Request
+from fastapi import APIRouter, Depends, status, Request, WebSocket, WebSocketDisconnect
 from app.services.response_service import ServiceResponse
 from app.repositories.order_repository import OrderRepository
 from app.repositories.report_repository import ReportRepository
@@ -11,6 +11,7 @@ from app.repositories.admin_repository import AdminRepository
 
 from app.schemas.order import *
 from app.schemas.report import *
+from app.core.websocket_manager import *
 
 from app.services.utility_service import *
 from app.services.astrology_service import *
@@ -58,8 +59,19 @@ def VerifyUser(request: Request, db: Session = Depends(get_db) ):
         return ServiceResponse.error(message="Administrateur introuvable", status_code=404)
     
 
+@router.websocket("/ws/admin-order-event")
+async def websocket_endpoint(websocket: WebSocket):
+    socket_admin_id = f"admin-order-event"
+    await manager.connect(socket_admin_id, websocket)
+    try:
+        while True:
+            await websocket.receive_text() 
+    except WebSocketDisconnect:
+        manager.disconnect(socket_admin_id)
+      
+      
 @router.post("/create", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
-def create_order(body: OrderPayload, db: Session = Depends(get_db)):
+async def create_order(body: OrderPayload, db: Session = Depends(get_db)):
     order_repo = OrderRepository(db)
     amount = 990 if body.plan_type == PlanType.ESSENTIEL else 1990
     print(body)
@@ -78,6 +90,10 @@ def create_order(body: OrderPayload, db: Session = Depends(get_db)):
     })
     
     data_json = jsonable_encoder(order)
+    
+    socket_session_id = f"admin-order-event"
+    
+    await manager.send_update(socket_session_id, data_json)
     
     return ServiceResponse.success(
         status_code=201,

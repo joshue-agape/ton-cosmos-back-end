@@ -101,7 +101,9 @@ async def process_order(order_id: int, session_id: str):
     order.stripe_session_id = session_id
     order_repo.update_status(order.id, OrderStatus.PROCESSING)
     
-    await manager.send_update(session_id, { "step": 1, "status": True })
+    socket_session_id = f"ton-cosmos-{order_id}"
+    
+    await manager.send_update(socket_session_id, { "step": 1, "status": True })
     
     report_data = ReportCreate(
         order_id=order.id,
@@ -127,7 +129,7 @@ async def process_order(order_id: int, session_id: str):
         
         report_repo.update_astral_data_json(report_id=report.id, astral_data=chart)
         
-        await manager.send_update(session_id, { "step": 2, "status": True })
+        await manager.send_update(socket_session_id, { "step": 2, "status": True })
         
         BASE_SECTIONS = [
             "introduction", 
@@ -164,7 +166,7 @@ async def process_order(order_id: int, session_id: str):
 
         ai_content_final = { "sections": final_report_sections }
         
-        await manager.send_update(session_id, { "step": 3, "status": True })
+        await manager.send_update(socket_session_id, { "step": 3, "status": True })
         
         report_repo.update_ai_content_json(report_id=report.id, ai_content=ai_content_final)
         
@@ -194,7 +196,7 @@ async def process_order(order_id: int, session_id: str):
             duration=duration
         )
         
-        await manager.send_update(session_id, { "step": 4, "status": True })
+        await manager.send_update(socket_session_id, { "step": 4, "status": True })
         
         email_data = {
             "full_name": order.full_name,
@@ -212,12 +214,12 @@ async def process_order(order_id: int, session_id: str):
         if email_result["success"]:
             order_repo.update_status(order.id, OrderStatus.COMPLETED)
             
-            await manager.send_update(session_id, { "step": 5, "status": True })
+            await manager.send_update(socket_session_id, { "step": 5, "status": True })
             
         else:
             error_message = f"Email failed: {email_result.get('message')}"
             order_repo.update_status(order.id, OrderStatus.FAILED)
-            await manager.send_update(session_id, { "step": 5, "status": False })
+            await manager.send_update(socket_session_id, { "step": 5, "status": False })
 
         if duration > 300:
             print(f"ALERT: Generation took {duration}s for order {order_id}")
@@ -226,7 +228,7 @@ async def process_order(order_id: int, session_id: str):
         error_message = str(e)
         print(f"CRITICAL ERROR [Order {order_id}]: {error_message}")
         order_repo.update_status(order.id, OrderStatus.FAILED)
-        await manager.send_update(session_id, { "step": 2, "status": False })
+        await manager.send_update(socket_session_id, { "step": 2, "status": False })
         
     finally:
         if error_message:
