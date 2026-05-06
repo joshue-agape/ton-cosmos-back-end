@@ -1,7 +1,8 @@
+import time
 import stripe
 import asyncio
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
 from pydantic import BaseModel
@@ -108,7 +109,6 @@ async def process_order(order_id: int, stripe_session_id: str):
             await manager.send_update(socket_session_id, {"step": 1, "status": True})
 
             report = await report_repo.create(ReportCreate(order_id=order.id, generation_duration=0))
-            # report = await report_repo.get_by_order_id(order_id=order_id)
 
             birth_dt = order.birth_date.replace(tzinfo=None)
             if order.birth_time:
@@ -130,14 +130,41 @@ async def process_order(order_id: int, stripe_session_id: str):
             
             if order.plan_type.lower() == "complet":
                 sections[8:8] = ["ombres", "aspects_majeurs", "predictions"]
+            
+            pause_event = asyncio.Event()
+            pause_event.set()
+            
+            async def fetch_section(section_id, semaphore, chart, order):
+                    max_retries = 10 
+                    
+                    for attempt in range(max_retries):
+                        await pause_event.wait()
 
-            final_sections = []
-            for section_id in sections:
+                        async with semaphore:
+                            try:
+                                print(f"Tentative ({attempt+1}) : {section_id}")
+                                return await ai_service.generate_astrology_report(
+                                    chart, order.full_name, section_id
+                                )
+                                
+                            except Exception as e:
+                                if "429" in str(e):
+                                    if pause_event.is_set():
+                                        pause_event.clear()
+                                        print(f"Rate limit sur {section_id}. Pause de 5s...")
+                                        await asyncio.sleep(5)
+                                        pause_event.set()
+                                    
+                                    continue 
+
+                                print(f"Erreur critique sur {section_id}: {e}")
+                                return f"Données indisponibles ({section_id})"
+
+                    return f"Timeout après plusieurs essais pour {section_id}"
             
-                print(f"SECTION ANALYS IA = {section_id}")
-            
-                section_content = await ai_service.generate_astrology_report(chart, order.full_name, section_id)
-                final_sections.append(section_content)
+            semaphore = asyncio.Semaphore(5)
+            tasks = [fetch_section(s, semaphore, chart, order) for s in sections]
+            final_sections = await asyncio.gather(*tasks)
 
             ai_content = {"sections": final_sections}
             await report_repo.update_ai_content_json(report.id, ai_content)
@@ -302,10 +329,40 @@ async def process_resend_email(order_id: int):
                 if order.plan_type.lower() == "complet":
                     sections[8:8] = ["ombres", "aspects_majeurs", "predictions"]
 
-                final_sections = []
-                for section_id in sections:
-                    section_content = await ai_service.generate_astrology_report(chart, order.full_name, section_id)
-                    final_sections.append(section_content)
+                pause_event = asyncio.Event()
+                pause_event.set()
+                
+                async def fetch_section(section_id, semaphore, chart, order):
+                        max_retries = 10 
+                        
+                        for attempt in range(max_retries):
+                            await pause_event.wait()
+
+                            async with semaphore:
+                                try:
+                                    print(f"Tentative ({attempt+1}) : {section_id}")
+                                    return await ai_service.generate_astrology_report(
+                                        chart, order.full_name, section_id
+                                    )
+                                    
+                                except Exception as e:
+                                    if "429" in str(e):
+                                        if pause_event.is_set():
+                                            pause_event.clear()
+                                            print(f"Rate limit sur {section_id}. Pause de 5s...")
+                                            await asyncio.sleep(5)
+                                            pause_event.set()
+                                        
+                                        continue 
+
+                                    print(f"Erreur critique sur {section_id}: {e}")
+                                    return f"Données indisponibles ({section_id})"
+
+                        return f"Timeout après plusieurs essais pour {section_id}"
+                
+                semaphore = asyncio.Semaphore(5)
+                tasks = [fetch_section(s, semaphore, chart, order) for s in sections]
+                final_sections = await asyncio.gather(*tasks)
 
                 ai_content = {"sections": final_sections}
                 await report_repo.update_ai_content_json(report.id, ai_content)

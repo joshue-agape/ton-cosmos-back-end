@@ -62,7 +62,7 @@ class AIService:
 
         ### CONTRAINTES DE RÉDACTION (STRICTES) :
         1. Pour chaque bloc, cite le placement (ex: "Ta Lune en Verseau...").
-        2. Développe chaque paragraphe de manière très riche (environts 50 à 200 mots par paragraphe maximum).
+        2. Développe chaque paragraphe de manière très riche (environts 50 à 120 mots par paragraphe maximum).
         3. INTERDICTION FORMELLE d'utiliser des retours à la ligne réels (touches Entrée) à l'intérieur des valeurs de texte. Utilise exclusivement '\\n' pour simuler un saut de ligne si nécessaire.
         4. N'utilise pas de caractères spéciaux non standards ou de guillemets doubles (") à l'intérieur de tes textes (utilise des guillemets simples ' à la place).
 
