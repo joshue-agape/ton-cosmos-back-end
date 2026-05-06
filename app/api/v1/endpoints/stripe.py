@@ -3,7 +3,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from fastapi import APIRouter, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
 from pydantic import BaseModel
 
 from app.database.deps import get_db
@@ -241,3 +241,118 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
     
     return Response(content="Webhook processed", status_code=200)
 
+
+@router.post("/resend-email/{order_id}")
+async def resend_email(order_id: int, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
+    order_repo = OrderRepository(db)
+    
+    order = await order_repo.get_by_id(order_id)
+    if not order:
+        return ServiceResponse.error(message="Commande non trouvée", status_code=404)
+
+    background_tasks.add_task(process_resend_email, order_id)
+    
+    return ServiceResponse.success(message="Le processus de génération et d'envoi a été relancé.")
+
+
+async def process_resend_email(order_id: int):
+    async for db in get_db():
+        order_repo = OrderRepository(db)
+        report_repo = ReportRepository(db)
+        
+        admin_ws = "order-status-for-admin"
+        socket_session_id = f"ton-cosmos-{order_id}"
+        
+        try:
+            order = await order_repo.get_by_id(order_id)
+            start_time = asyncio.get_event_loop().time()
+            
+            # Initialisation Rapport
+            report = await report_repo.get_by_order_id(order_id=order_id)
+            if not report:
+                report = await report_repo.create(ReportCreate(order_id=order.id, generation_duration=0))
+
+            # Update Status -> PROCESSING
+            await order_repo.update_status(order_id=order.id, status=OrderStatus.PROCESSING)
+            await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.PROCESSING})
+            await manager.send_update(socket_session_id, {"step": 1, "status": True})
+            
+            # --- ÉTAPE 1 : CHART ASTRALE ---
+            chart = report.astral_data_json
+            if not chart:
+                birth_dt = order.birth_date.replace(tzinfo=None)
+                if order.birth_time:
+                    birth_dt = datetime.combine(birth_dt.date(), order.birth_time)
+
+                chart = await astrology_service.get_full_chart(
+                    birth_date=birth_dt, 
+                    lat=order.latitude,
+                    lon=order.longitude
+                )
+                await report_repo.update_astral_data_json(report.id, chart)
+            
+            await manager.send_update(socket_session_id, {"step": 2, "status": True})
+                
+            # --- ÉTAPE 2 : CONTENU IA ---
+            ai_content = report.ai_content_json
+            if not ai_content:
+                sections = ["introduction", "piliers", "mental", "dominantes", "maisons_vie_1", 
+                            "maisons_vie_2", "amour", "mission", "destin", "conseils", "synthese"]
+                
+                if order.plan_type.lower() == "complet":
+                    sections[8:8] = ["ombres", "aspects_majeurs", "predictions"]
+
+                final_sections = []
+                for section_id in sections:
+                    section_content = await ai_service.generate_astrology_report(chart, order.full_name, section_id)
+                    final_sections.append(section_content)
+
+                ai_content = {"sections": final_sections}
+                await report_repo.update_ai_content_json(report.id, ai_content)
+            
+            await manager.send_update(socket_session_id, {"step": 3, "status": True})
+                
+            # --- ÉTAPE 3 : GÉNÉRATION PDF ---
+            pdf_path = report.pdf_url
+            if not pdf_path:
+                safe_name = order.full_name.replace(" ", "-") if order.full_name else "user"
+                output_filename = f"report-{order.plan_type.lower()}-{safe_name}-{datetime.now().strftime('%Y%m%d')}.pdf"
+
+                pdf_path = await pdf_service.generate_astrological_report(
+                    template_name="premium_report",
+                    data={
+                        "full_name": order.full_name,
+                        "birth_chart": chart.get("birth_chart", {}),
+                        "ai_content": ai_content,
+                        "birth_date_info": f"{order.birth_date} {order.birth_time}"
+                    },
+                    output_filename=output_filename
+                )
+                duration = round(asyncio.get_event_loop().time() - start_time, 2)
+                await report_repo.finalize_pdf(report.id, pdf_path, output_filename, duration)
+                
+            await manager.send_update(socket_session_id, {"step": 4, "status": True})
+            
+            # --- ÉTAPE 4 : ENVOI EMAIL ---
+            email_result = await email_service.send_email(
+                to=order.email,
+                subject="Ton Cosmos : Ton Rapport Astral est prêt !",
+                template_name="report_ready",
+                data={"full_name": order.full_name, "current_year": datetime.now().year},
+                attachment_path=pdf_path
+            )
+            
+            if email_result.get("success"):
+                await order_repo.update_status(order.id, OrderStatus.COMPLETED)
+                await manager.send_update(socket_session_id, {"step": 5, "status": True})
+                await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.COMPLETED})
+                await db.commit()
+            else:
+                raise Exception(f"Email error: {email_result.get('message')}")
+        
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"CRITICAL ERROR [Order {order_id}]: {str(e)}")
+            await order_repo.update_status(order_id, OrderStatus.FAILED)
+            await manager.send_update(socket_session_id, {"step": 1, "status": False, "error": str(e)})
+            await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.FAILED})
