@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     DB_NAME: str
     
     # --- Admin Initial ---
+    ADMIN_USERNAME: str
     ADMIN_EMAIL: str
     ADMIN_PASSWORD: str
     

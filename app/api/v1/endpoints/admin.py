@@ -48,7 +48,8 @@ async def login(body: LoginPayload, request: Request, response: Response, db: As
 
     access_token = jwt_service.create_access_token(
         user_id=admin.id,
-        email=admin.email
+        email=admin.email,
+        secret_key=admin.client_secret
     )
     
     refresh_token = jwt_service.create_refresh_token(
@@ -139,7 +140,7 @@ async def refresh_token_route(request: Request, response: Response, db: AsyncSes
         return ServiceResponse.error("Utilisateur non trouvé", 404)
         
     # Création des nouveaux tokens
-    new_access = jwt_service.create_access_token(user_id=user.id, email=user.email)
+    new_access = jwt_service.create_access_token(user_id=user.id, email=user.email, secret_key=user.client_secret)
     new_refresh = jwt_service.create_new_refresh_token(user_id=user.id, email=user.email, expire=expire_dt)
     
     max_age = int((expire_dt - datetime.now(timezone.utc)).total_seconds())

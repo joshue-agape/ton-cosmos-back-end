@@ -1,4 +1,5 @@
 from fastapi import Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from app.services.response_service import ServiceResponse
 from app.repositories.admin_repository import AdminRepository
@@ -24,7 +25,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # On évite de bloquer la documentation API (Swagger/Redoc)
-        if path.startswith(("/docs", "/redoc", "/openapi.json", "/api/v1/health", "/api/v1/order", "/api/v1/admin", "/api/v1/stripe")):
+        if path.startswith(("/docs", "/redoc", "/openapi.json", "/api/v1/health")):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization")
@@ -47,6 +48,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         # On tente de décoder le refresh token pour identifier qui frappe à la porte
         refresh_payload = self.jwt_service.decode_token(token=refresh_token)
+        
         if not refresh_payload:
             return ServiceResponse.error(
                 message="Votre session a expiré ou le jeton est invalide. Veuillez vous reconnecter.",
@@ -55,36 +57,38 @@ class AuthMiddleware(BaseHTTPMiddleware):
 
         user_id = refresh_payload.get("sub")
 
-        # On ouvre une connexion à la base de données pour vérifier les droits de l'admin
-        db = SessionLocal()
-
-        try:
-            user_repo = AdminRepository(db)
-
-            # Petite vérification de sécurité : l'ID doit être un nombre valide
+        async with SessionLocal() as db:
             try:
-                user_id = int(user_id)
-            except Exception:
-                return ServiceResponse.error("Identifiant utilisateur corrompu dans le jeton.", 401)
+                user_repo = AdminRepository(db)
+                user_id_int = int(user_id)
+                
+                user = await user_repo.get_by_id(user_id_int)
 
-            # Est-ce que cet utilisateur existe toujours dans nos fichiers ?
-            user = user_repo.get_by_id(user_id)
+                if not user:
+                    return self._abort("Administrateur introuvable.", 401, request)
 
-            if not user:
-                return ServiceResponse.error("Utilisateur introuvable. Accès refusé.", 401)
+                verified_payload = self.jwt_service.decode_token(
+                    token,
+                    secret_key=user.client_secret
+                )
 
-            # Ici, on valide le jeton d'accès principal en utilisant le secret spécifique à cet utilisateur
-            verified_payload = self.jwt_service.decode_token(
-                token,
-                secret_key=user.client_secret
-            )
+                if not verified_payload:
+                    return self._abort("Jeton d'accès invalide ou expiré.", 401, request)
 
-            if not verified_payload:
-                return ServiceResponse.error("Jeton d'accès invalide ou expiré.", 401)
-
-            # Tout est bon ! On stocke les infos de l'utilisateur dans la requête pour la suite
-            request.state.user = verified_payload
-        finally:
-            db.close()
+                request.state.user = verified_payload
+                
+            except Exception as e:
+                return self._abort("Erreur interne d'authentification.", 500, request)
 
         return await call_next(request)
+
+    def _abort(self, message: str, status_code: int, request: Request):
+        response = JSONResponse(
+            content={"success": False, "message": message},
+            status_code=status_code
+        )
+        origin = request.headers.get("Origin")
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+        return response

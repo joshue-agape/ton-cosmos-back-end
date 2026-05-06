@@ -24,29 +24,6 @@ router = APIRouter()
 jwt_service = JWTService()
 
 
-async def get_current_admin(request: Request, db: AsyncSession = Depends(get_db)):
-    admin_repo = AdminRepository(db)
-    refresh_token = request.cookies.get("refresh_token")
-    
-    if not refresh_token:
-        raise HTTPException(status_code=401, detail="Jeton de rafraîchissement manquant")
-    
-    refresh_payload = jwt_service.decode_token(refresh_token)
-    if not refresh_payload or refresh_payload.get("type") != "refresh":
-        raise HTTPException(status_code=401, detail="Jeton invalide")
-
-    user_id = refresh_payload.get("sub")
-    try:
-        admin = await admin_repo.get_by_id(int(user_id))
-    except (ValueError, TypeError):
-        raise HTTPException(status_code=401, detail="ID utilisateur invalide")
-
-    if not admin:
-        raise HTTPException(status_code=404, detail="Administrateur introuvable")
-    
-    return admin
-
-
 @router.websocket("/ws/admin-order-event")
 async def websocket_endpoint_for_check_new_event(websocket: WebSocket):
     socket_admin_id = "admin-order-event"
@@ -87,8 +64,7 @@ async def create_order(body: OrderPayload, db: AsyncSession = Depends(get_db)):
 async def get_orders(
     skip: int = 0, 
     limit: int = 100, 
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db)
 ):
     repo = OrderRepository(db)
     orders = await repo.get_all(skip=skip, limit=limit)
@@ -99,8 +75,7 @@ async def get_orders(
 async def get_orders_with_report(
     skip: int = 0, 
     limit: int = 100, 
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db)
 ):
     repo = OrderRepository(db)
     orders = await repo.get_all_with_report(skip=skip, limit=limit)
@@ -110,8 +85,7 @@ async def get_orders_with_report(
 @router.get("/report/download/pdf-report/{order_id}")
 async def download_report(
     order_id: int, 
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db)
 ):
     order_repo = OrderRepository(db)
     report_repo = ReportRepository(db)
@@ -139,8 +113,7 @@ async def download_report(
     
 @router.get("/stats")
 async def read_dashboard_stats(
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db)
 ):
     order_repo = OrderRepository(db)
     s = await order_repo.get_dashboard_stats()
@@ -182,8 +155,7 @@ async def read_dashboard_stats(
 @router.delete("/delete/{order_id}")
 async def delete_order(
     order_id: int, 
-    db: AsyncSession = Depends(get_db),
-    _ = Depends(get_current_admin)
+    db: AsyncSession = Depends(get_db)
 ):
     order_repo = OrderRepository(db)
     
