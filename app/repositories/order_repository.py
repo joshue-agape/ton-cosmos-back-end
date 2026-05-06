@@ -1,118 +1,149 @@
 from typing import List, Optional
-from sqlalchemy import func
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, select, delete
+from datetime import datetime, timedelta, timezone
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 from app.models.order import Order, OrderStatus
 from app.schemas.order import OrderCreate
 
 class OrderRepository:
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
-
-
-    def create(self, order_data: OrderCreate) -> Order:
-        db_order = Order(**order_data)
-        self.db.add(db_order)
-        self.db.commit()
-        self.db.refresh(db_order)
-        return db_order
+        
+        
+    async def create(self, order_data: dict) -> Order:
+        try:
+            db_order = Order(**order_data) 
+            self.db.add(db_order)
+            await self.db.flush() 
+            await self.db.commit()
+            await self.db.refresh(db_order)
+            return db_order
+        except Exception as e:
+            await self.db.rollback()
+            raise e
     
     
-    def update(self, order_id: int, order_data) -> Order:
-        db_order = self.db.query(Order).filter(Order.id == order_id).first()
-
+    async def update(self, order_id: int, order_data) -> Optional[Order]:
+        db_order = await self.get_by_id(order_id)
         if not db_order:
             return None
 
-        for key, value in order_data.dict(exclude_unset=True).items():
+        update_data = order_data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
             setattr(db_order, key, value)
 
-        self.db.commit()
-        self.db.refresh(db_order)
-
+        await self.db.commit()
+        await self.db.refresh(db_order)
         return db_order
 
 
-    def get_by_id(self, order_id: int) -> Optional[Order]:
-        return self.db.query(Order).filter(Order.id == order_id).first()
+    async def get_by_id(self, order_id: int) -> Optional[Order]:
+        query = select(Order).filter(Order.id == order_id)
+        result = await self.db.execute(query)
+        return result.scalars().first()
 
 
-    def delete_by_id(self, order_id: int) -> bool:
-        order = self.db.query(Order).get(order_id)
-        if order:
-            self.db.delete(order)
-            self.db.commit()
+    async def delete_by_id(self, order_id: int) -> bool:
+        db_order = await self.get_by_id(order_id)
+        if db_order:
+            await self.db.delete(db_order)
+            await self.db.commit()
             return True
         return False
 
 
-    def get_by_stripe_session(self, session_id: str) -> Optional[Order]:
-        return self.db.query(Order).filter(Order.stripe_session_id == session_id).first()
+    async def get_by_stripe_session(self, session_id: str) -> Optional[Order]:
+        query = select(Order).filter(Order.stripe_session_id == session_id)
+        result = await self.db.execute(query)
+        return result.scalars().first()
 
 
-    def get_orders_by_email(self, email: str) -> List[Order]:
-        return self.db.query(Order).filter(Order.email == email).all()
+    async def get_orders_by_email(self, email: str) -> List[Order]:
+        query = select(Order).filter(Order.email == email)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
     
 
-    def get_all(self, skip: int = 0, limit: int = 10000) -> List[Order]:
-        return self.db.query(Order).order_by(Order.created_at.desc()).offset(skip).limit(limit).all()
+    async def get_all(self, skip: int = 0, limit: int = 10000) -> List[Order]:
+        query = (
+            select(Order)
+            .order_by(Order.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
 
 
-    def get_all_with_report(self, skip: int = 0, limit: int = 10000) -> List[Order]:
-        return (
-            self.db.query(Order)
+    async def get_all_with_report(self, skip: int = 0, limit: int = 10000) -> List[Order]:
+        query = (
+            select(Order)
             .options(joinedload(Order.report))
             .order_by(Order.created_at.desc())
-            .offset(skip).limit(limit)
-            .all()
+            .offset(skip)
+            .limit(limit)
         )
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
 
 
-    def update_status(self, order_id: int, status: OrderStatus) -> Optional[Order]:
-        db_order = self.get_by_id(order_id)
+    async def update_status(
+        self, 
+        order_id: int, 
+        status: OrderStatus, 
+        stripe_session_id: str = None
+    ) -> Optional[Order]:
+        db_order = await self.get_by_id(order_id)
+        
         if db_order:
             db_order.status = status
-            self.db.commit()
-            self.db.refresh(db_order)
+            
+            if stripe_session_id:
+                db_order.stripe_session_id = stripe_session_id
+            
+            try:
+                await self.db.commit()
+                await self.db.refresh(db_order)
+            except Exception as e:
+                await self.db.rollback()
+                print(f"Error updating order {order_id}: {e}")
+                raise e
+                
         return db_order
     
 
-    def get_dashboard_stats(self):
-        now = datetime.now()
+    async def get_dashboard_stats(self):
+        now = datetime.now(timezone.utc)
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         week_start = today_start - timedelta(days=now.weekday())
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
         paid_statuses = [OrderStatus.PAID, OrderStatus.PROCESSING, OrderStatus.COMPLETED]
 
-        def get_revenue(start_date=None):
-            query = self.db.query(func.sum(Order.amount_total)).filter(
+        async def fetch_revenue(start_date=None):
+            query = select(func.sum(Order.amount_total)).filter(
                 Order.status.in_(paid_statuses)
             )
             if start_date:
                 query = query.filter(Order.created_at >= start_date)
-            return query.scalar() or 0
+            result = await self.db.execute(query)
+            return result.scalar() or 0
 
-        today_rev = get_revenue(today_start)
-        week_rev = get_revenue(week_start)
-        month_rev = get_revenue(month_start)
-        total_rev = get_revenue()
+        today_rev = await fetch_revenue(today_start)
+        week_rev = await fetch_revenue(week_start)
+        month_rev = await fetch_revenue(month_start)
+        total_rev = await fetch_revenue()
 
-        total_paid_count = self.db.query(func.count(Order.id)).filter(
-            Order.status.in_(paid_statuses)
-        ).scalar() or 0
+        async def count_orders(filters):
+            query = select(func.count(Order.id)).filter(*filters)
+            result = await self.db.execute(query)
+            return result.scalar() or 0
 
-        completed_count = self.db.query(func.count(Order.id)).filter(
-            Order.status == OrderStatus.COMPLETED
-        ).scalar() or 0
-
-        processing_count = self.db.query(func.count(Order.id)).filter(
-            Order.status.in_([OrderStatus.PAID, OrderStatus.PROCESSING])
-        ).scalar() or 0
-
-        failed_delivery_count = self.db.query(func.count(Order.id)).filter(
-            Order.status == OrderStatus.FAILED
-        ).scalar() or 0
+        total_paid_count = await count_orders([Order.status.in_(paid_statuses)])
+        completed_count = await count_orders([Order.status == OrderStatus.COMPLETED])
+        processing_count = await count_orders([Order.status.in_([OrderStatus.PAID, OrderStatus.PROCESSING])])
+        failed_delivery_count = await count_orders([Order.status == OrderStatus.FAILED])
 
         denominator = total_paid_count + failed_delivery_count
         delivery_rate = round((completed_count / denominator * 100), 1) if denominator > 0 else 0
@@ -128,5 +159,3 @@ class OrderRepository:
             "failed_deliveries": failed_delivery_count,
             "delivery_rate": delivery_rate
         }
-        
-        

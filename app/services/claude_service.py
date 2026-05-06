@@ -2,38 +2,41 @@ import json
 import logging
 import anthropic
 from app.core.config import settings
+from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
 class AIService:
     def __init__(self):
-        self.client = anthropic.Anthropic(
+        self.client = anthropic.AsyncAnthropic(
             api_key=settings.ANTHROPIC_API_KEY
         )
         
     
-    def test_claude_connection(self):
+    async def test_claude_connection(self) -> Dict[str, Any]:
         try:
-            response = self.client.messages.create(
-                model="claude-opus-4-6", 
+            response = await self.client.messages.create(
+                model="claude-opus-4-6",
                 max_tokens=200,
                 temperature=0,
-                system=f"Réponds uniquement par un JSON valide",
-                messages=[{"role": "user", "content": "Génère un JSON."}]
+                system="Réponds uniquement par un JSON valide.",
+                messages=[{"role": "user", "content": "Génère un petit JSON de test."}]
             )
             
             raw_content = response.content[0].text.strip()
             
-            if raw_content.startswith("```json"):
-                raw_content = raw_content.replace("```json", "").replace("```", "").strip()
+            # Nettoyage robuste du Markdown JSON
+            if raw_content.startswith("```"):
+                raw_content = raw_content.strip("```json").strip("```").strip()
             
             return json.loads(raw_content)
             
         except Exception as e:
+            logger.error(f"Échec du test de connexion Claude : {e}")
             return {"error": str(e), "integration_status": "failed"}
 
 
-    def generate_astrology_report(self, chart: dict, full_name: str, section_key: str):
+    async def generate_astrology_report(self, chart: dict, full_name: str, section_key: str) -> Dict[str, Any]:
         section_prompts = {
             "introduction": "Voyage au cœur de ton ciel : Une introduction immersive à l'astrologie comme outil de connaissance de soi et le message d'Indira pour ton évolution.",
             "piliers": "Les Fondations de l'Être : Analyse psychologique croisée et approfondie de ton 'Big Three' (Soleil, Lune, Ascendant). Comment ton essence, tes besoins émotionnels et ton masque social s'unissent.",
@@ -79,7 +82,7 @@ class AIService:
                         "Texte du premier paragraphe sans retour à la ligne réel.",
                         "Texte du second paragraphe sans retour à la ligne réel."
                     ],
-                    "note": "Note courte",
+                    "note": "Note courte" ou Null,
                     "conseil": "Conseil pratique" ou Null
                 }}
             ],
@@ -92,7 +95,7 @@ class AIService:
         raw_content = ""
         
         try:
-            response = self.client.messages.create(
+            response = await self.client.messages.create(
                 model="claude-opus-4-6", 
                 max_tokens=8000,
                 temperature=0.7,
@@ -102,30 +105,27 @@ class AIService:
             
             raw_content = response.content[0].text.strip()
             
-            if "```json" in raw_content:
-                raw_content = raw_content.split("```json")[1].split("```")[0].strip()
-            elif "```" in raw_content:
-                raw_content = raw_content.split("```")[1].split("```")[0].strip()
+            if "```" in raw_content:
+                raw_content = raw_content.split("```")[1]
+                if raw_content.startswith("json"):
+                    raw_content = raw_content[4:]
+                raw_content = raw_content.strip()
 
             if not raw_content.endswith("}"):
-                logger.warning(f"JSON tronqué détecté pour l'ordre de {full_name}. Tentative de réparation...")
+                logger.warning(f"Réparation JSON pour {full_name}")
                 if not raw_content.endswith('"') and not raw_content.endswith(']'):
                     raw_content += '"'
-                
-                if ']' in raw_content and '}' not in raw_content:
-                    raw_content += '}'
-                elif ']' not in raw_content:
-                    raw_content += ']}' if raw_content.count('{') > raw_content.count('}') else ""
-                    
+                if raw_content.count('[') > raw_content.count(']'):
+                    raw_content += ']}'
                 if raw_content.count('{') > raw_content.count('}'):
                     raw_content += '}'
 
             return json.loads(raw_content)
 
         except json.JSONDecodeError as e:
-            logger.error(f"Erreur de décodage JSON. Contenu partiel : {raw_content[:200]}")
-            raise Exception(f"Le format de réponse de l'IA est invalide : {str(e)}")
+            logger.error(f"Erreur JSON : {raw_content[:200]}")
+            raise Exception("Format JSON invalide reçu de l'IA.")
         except Exception as e:
-            logger.error(f"Erreur critique lors de la génération Claude : {str(e)}")
+            logger.error(f"Erreur Claude : {e}")
             raise e
         

@@ -1,50 +1,46 @@
 import secrets
-from sqlalchemy.orm import Session
-from app.database.deps import get_db
-from app.core.config import settings
+import logging
+from datetime import datetime, timedelta, timezone
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, Request
 
-from app.schemas.admin import *
-from app.services.email_service import *
-from app.services.utility_service import *
+from app.database.deps import get_db
+from app.core.config import settings
+from app.schemas.admin import LoginPayload, ForgotPayload, ResetPayload, UpdatePasswordPayload
+from app.services.email_service import EmailService
+from app.services.utility_service import UtilsService, PasswordService
+from app.services.utility_service import JWTService
 from app.services.token_service import TokenService
-from app.repositories.admin_repository import *
-from app.repositories.token_repository import *
+from app.repositories.admin_repository import AdminRepository
+from app.repositories.token_repository import TokenRepository
 from app.services.response_service import ServiceResponse
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
+# Initialisation des services
 service = UtilsService()
 jwt_service = JWTService()
 email_service = EmailService()
 password_service = PasswordService()
 
-jwst_secret_key = settings.JWT_SECRET_KEY
-
 
 @router.post("/login")
-def login(body: LoginPayload, request: Request, response: Response, db: Session = Depends(get_db)):
+async def login(body: LoginPayload, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     admin_repo = AdminRepository(db)
     
     device = service.get_device(request=request)
+    admin = await admin_repo.get_by_email(body.email)
     
-    admin = admin_repo.get_by_email(body.email)
     if not admin:
-        return ServiceResponse.error(
-            message="Invalid email",
-            status_code=401,
-            data={ "error": "email" }
-        )
+        return ServiceResponse.error(message="Email invalide", status_code=401, data={"error": "email"})
         
     if not password_service.verify_password(body.password, admin.hashed_password):
-        return ServiceResponse.error(
-            message="Password incorrect",
-            status_code=401,
-            data={"error": "password"}
-        )
+        return ServiceResponse.error(message="Mot de passe incorrect", status_code=401, data={"error": "password"})
     
-    admin_repo.update_login_stats(
+    # Mise à jour des stats de login
+    await admin_repo.update_login_stats(
         admin_id=admin.id,
         device=device.get("device"),
         ip=device.get("IP")
@@ -56,24 +52,26 @@ def login(body: LoginPayload, request: Request, response: Response, db: Session 
     )
     
     refresh_token = jwt_service.create_refresh_token(
-        user_id=admin.id,
-        email=admin.email,
+        user_id=admin.id, 
+        email=admin.email, 
         remember=body.remember_me if body.remember_me else False
     )
     
+    # Configuration du Cookie
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
         secure=settings.ENV == 'production',
         samesite="lax",
-        max_age=7 * 24 * 60 * 60 if body.remember_me else 24 * 60 * 60
+        max_age=7 * 24 * 60 * 60 if body.remember_me else 24 * 60 * 60,
+        path="/"
     )
 
     return {
         "status_code": 200,
         "success": True,
-        "message": "Login successful",
+        "message": "Connexion réussie",
         "data": {
             "access_token": access_token,
             "token_type": "bearer"
@@ -82,125 +80,73 @@ def login(body: LoginPayload, request: Request, response: Response, db: Session 
 
 
 @router.post("/logout")
-def logout(request: Request, response: Response, db: Session = Depends(get_db)):
+async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     admin_repo = AdminRepository(db)
     token_repo = TokenRepository(db)
     token_service = TokenService(token_repo)
     
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
-        return ServiceResponse.error("Missing refresh token", 401)
+        return ServiceResponse.error("Refresh token manquant", 401)
     
     refresh_payload = jwt_service.decode_token(refresh_token)
     if not refresh_payload or refresh_payload.get("type") != "refresh":
-        return ServiceResponse.error("Invalid refresh token", 401)
+        response.delete_cookie("refresh_token", path="/")
+        return ServiceResponse.error("Token invalide", 401)
     
     try:
-        refresh_user_id = int(refresh_payload.get("sub"))
-        refresh_expire = datetime.fromtimestamp(
-            refresh_payload.get("exp"), tz=timezone.utc
-        )
-    except (TypeError, ValueError):
-        return ServiceResponse.error("Invalid refresh token payload", 401)
+        user_id = int(refresh_payload.get("sub"))
+        expire_at = datetime.fromtimestamp(refresh_payload.get("exp"), tz=timezone.utc)
+        
+        if settings.ENV == "production":
+            await token_service.revoque_token(
+                user_id=user_id,
+                token=refresh_token,
+                token_type="refresh",
+                exp=expire_at
+            )
+    except Exception as e:
+        logger.error(f"Erreur lors du logout : {e}")
 
-    user = admin_repo.get_by_id(refresh_user_id)
-    if not user:
-        return ServiceResponse.error("Invalid refresh token payload", 401)
-
-    if settings.ENV == "production":
-        token_service.revoque_token(
-            user_id=user.id,
-            token=refresh_token,
-            token_type="refresh",
-            exp=refresh_expire
-        )
-
-    response.delete_cookie("refresh_token")
-
-    return {
-        "success": True,
-        "status_code": 200,
-        "message": "Logout successfully",
-        "data": None
-    }
+    response.delete_cookie("refresh_token", path="/")
+    return {"success": True, "status_code": 200, "message": "Déconnexion réussie"}
 
 
 @router.post("/refresh-token")
-def refreshToken(token: str, request: Request, response: Response, db: Session = Depends(get_db)):
+async def refresh_token_route(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     admin_repo = AdminRepository(db)
     token_repo = TokenRepository(db)
     token_service = TokenService(token_repo)
     
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
-        return ServiceResponse.error("Missing refresh token", 401)
+        return ServiceResponse.error("Refresh token manquant", 401)
     
-    refresh_payload = jwt_service.decode_token(refresh_token)
+    payload = jwt_service.decode_token(refresh_token)
+    if not payload or payload.get("type") != "refresh":
+        return ServiceResponse.error("Token invalide", 401)
+
+    user_id = int(payload.get("sub"))
+    expire_ts = payload.get("exp")
+    expire_dt = datetime.fromtimestamp(expire_ts, tz=timezone.utc)
     
-    if not refresh_payload or refresh_payload.get("type") != "refresh":
-        return ServiceResponse.error(message="Invalid refresh token", status_code=401)
-
-    exp_timestamp = refresh_payload.get("exp")
-
-    if not exp_timestamp:
-        return ServiceResponse.error(message="Invalid expiration", status_code=401)
+    if expire_dt <= datetime.now(timezone.utc):
+        response.delete_cookie("refresh_token", path="/")
+        return ServiceResponse.error("Token expiré", 401)
     
-    expire = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc)
-    now = datetime.now(timezone.utc)
-
-    if expire <= now:
-        response.delete_cookie("refresh_token")
-        return ServiceResponse.error(message="Refresh token expired", status_code=401)
-    
-    user_id = refresh_payload.get("sub")
-
-    if not user_id:
-        return ServiceResponse.error(message="Invalid token payload", status_code=401)
-    
-    try:
-        user_id = int(user_id)
-    except ValueError:
-        return ServiceResponse.error(message="Invalid user ID", status_code=401)
-    
-    existing_user = admin_repo.get_by_id(user_id)
-
-    if not existing_user:
-        return ServiceResponse.error(message="User not found", status_code=404)
-
-    if settings.ENV == 'production':
-        token_service.revoque_token(
-            user_id=user_id,
-            token=refresh_token,
-            token_type="refresh",
-            exp=expire
-        )
-        token_service.revoque_token(
-            user_id=user_id,
-            token=token,
-            token_type="access",
-            exp=now
-        )
+    user = await admin_repo.get_by_id(user_id)
+    if not user:
+        return ServiceResponse.error("Utilisateur non trouvé", 404)
         
-    new_access_token = jwt_service.create_access_token(
-        user_id=existing_user.id,
-        email=existing_user.email,
-        secret_key=existing_user.client_secret
-    )
-
-    new_refresh_token = jwt_service.create_new_refresh_token(
-        user_id=existing_user.id,
-        email=existing_user.email,
-        expire=expire
-    )
+    # Création des nouveaux tokens
+    new_access = jwt_service.create_access_token(user_id=user.id, email=user.email)
+    new_refresh = jwt_service.create_new_refresh_token(user_id=user.id, email=user.email, expire=expire_dt)
     
-    max_age = int((expire - now).total_seconds())
-    if max_age <= 0:
-        response.delete_cookie("refresh_token")
-        return ServiceResponse.error(message="Refresh token expired", status_code=404)
-        
+    max_age = int((expire_dt - datetime.now(timezone.utc)).total_seconds())
+    
     response.set_cookie(
         key="refresh_token",
-        value=new_refresh_token,
+        value=new_refresh,
         httponly=True,
         secure=settings.ENV == 'production',
         samesite="lax",
@@ -210,60 +156,47 @@ def refreshToken(token: str, request: Request, response: Response, db: Session =
 
     return {
         "success": True,
-        "status_code": 200,
-        "message": "Token refreshed",
-        "data": {
-            "access_token": new_access_token,
-            "token_type": "bearer"
-        }
+        "message": "Token actualisé",
+        "data": {"access_token": new_access, "token_type": "bearer"}
     }
 
 
 @router.post("/forgot-password")
-def reset_password(body: ForgotPayload, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+async def forgot_password(body: ForgotPayload, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_db)):
     admin_repo = AdminRepository(db)
+    admin = await admin_repo.get_by_email(body.email)
     
-    admin = admin_repo.get_by_email(body.email)
+    msg = "Si un compte avec cet email existe, un lien de réinitialisation a été envoyé."
+    
     if not admin:
-        return ServiceResponse.success(
-            message="Si un compte avec cet email existe, un lien de réinitialisation a été envoyé.",
-            status_code=200
-        )
+        return ServiceResponse.success(message=msg)
     
     fp_token = secrets.token_urlsafe(32)
     fp_expire = datetime.now(timezone.utc) + timedelta(minutes=15)
 
-    admin_repo.set_reset_token(
-        email=body.email,
-        token=fp_token,
-        expires_at=fp_expire
-    )
+    await admin_repo.set_reset_token(email=body.email, token=fp_token, expires_at=fp_expire)
 
-    reset_password_link = f"{settings.FRONTEND_URL}/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9/YXV0aC9yZXNldC1wYXNzd29yZA?token={fp_token}"
+    reset_link = f"{settings.FRONTEND_URL}/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9/YXV0aC9yZXNldC1wYXNzd29yZA?token={fp_token}"
     
     background_tasks.add_task(
         email_service.send_email,
         to=admin.email,
-        subject="Réinitialisation de votre mot de passe - Ton Cosmos",
+        subject="Réinitialisation de votre mot de passe",
         template_name="reset_password",
         data={
             "full_name": "Système JVN Lab - Ton Cosmos",
-            "reset_link": reset_password_link,
+            "reset_link": reset_link,
             "current_year": datetime.now().year
         }
     )
     
-    return ServiceResponse.success(
-        message="Si un compte avec cet email existe, un lien de réinitialisation a été envoyé.",
-        status_code=200
-    )
+    return ServiceResponse.success(message=msg)
 
 
 @router.get("/verify-reset-token")
-def verifyToken(token: str, db: Session = Depends(get_db)):
+async def verify_reset_token(token: str, db: AsyncSession = Depends(get_db)):
     admin_repo = AdminRepository(db)
-    
-    admin = admin_repo.get_by_reset_token(token)
+    admin = await admin_repo.get_by_reset_token(token)
     
     if not admin:
         return ServiceResponse.error(
@@ -277,18 +210,13 @@ def verifyToken(token: str, db: Session = Depends(get_db)):
             status_code=400
         )
     
-    return ServiceResponse.success(
-        message="Le jeton est valide.",
-        status_code=200,
-        data=None
-    )
+    return ServiceResponse.success("Jeton valide.")
 
 
 @router.put("/reset-password")
-def reset_password(body: ResetPayload, db: Session = Depends(get_db)):
+async def reset_password_finish(body: ResetPayload, db: AsyncSession = Depends(get_db)):
     admin_repo = AdminRepository(db)
-    
-    admin = admin_repo.get_by_reset_token(body.token)
+    admin = await admin_repo.get_by_reset_token(body.token)
     
     if not admin:
         return ServiceResponse.error(
@@ -302,68 +230,41 @@ def reset_password(body: ResetPayload, db: Session = Depends(get_db)):
             status_code=400
         )
     
-    hashed_password = password_service.hash_password(body.new_password)
-    admin_repo.update_password(admin_id=admin.id, new_hashed_password=hashed_password)
+    new_hashed = password_service.hash_password(body.new_password)
+    await admin_repo.update_password(admin_id=admin.id, new_hashed_password=new_hashed)
     
-    return ServiceResponse.success(
-        message="Ton mot de passe a été mis à jour avec succès.",
-        status_code=200,
-        data=None
-    )
+    return ServiceResponse.success("Mot de passe mis à jour.")
 
 
 @router.patch("/update-password")
-def reset_password(body: UpdatePasswordPayload, request: Request, response: Response, db: Session = Depends(get_db)):
+async def update_password(body: UpdatePasswordPayload, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     admin_repo = AdminRepository(db)
     
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
-        return ServiceResponse.error("Missing refresh token", 401)
+        return ServiceResponse.error("Non autorisé", 401)
     
-    refresh_payload = jwt_service.decode_token(refresh_token)
-    
-    if not refresh_payload or refresh_payload.get("type") != "refresh":
-        return ServiceResponse.error(message="Invalid refresh token", status_code=401)
+    payload = jwt_service.decode_token(refresh_token)
+    if not payload or payload.get("type") != "refresh":
+        return ServiceResponse.error("Session invalide", 401)
 
-    exp_timestamp = refresh_payload.get("exp")
-
-    if not exp_timestamp:
-        return ServiceResponse.error(message="Invalid expiration", status_code=401)
+    user_id = int(payload.get("sub"))
+    expire_ts = payload.get("exp")
+    expire_dt = datetime.fromtimestamp(expire_ts, tz=timezone.utc)
     
-    expire = datetime.fromtimestamp(exp_timestamp, tz=timezone.utc)
-    now = datetime.now(timezone.utc)
-
-    if expire <= now:
-        response.delete_cookie("refresh_token")
-        return ServiceResponse.error(message="Refresh token expired", status_code=401)
+    if expire_dt <= datetime.now(timezone.utc):
+        response.delete_cookie("refresh_token", path="/")
+        return ServiceResponse.error("Token expiré", 401)
     
-    user_id = refresh_payload.get("sub")
-
-    if not user_id:
-        return ServiceResponse.error(message="Invalid token payload", status_code=401)
-    
-    try:
-        user_id = int(user_id)
-    except ValueError:
-        return ServiceResponse.error(message="Invalid user ID", status_code=401)
-    
-    admin = admin_repo.get_by_id(user_id)
+    admin = await admin_repo.get_by_id(user_id)
 
     if not admin:
-        return ServiceResponse.error(message="User not found", status_code=404)
+        return ServiceResponse.error("Utilisateur non trouvé", 404)
     
     if not password_service.verify_password(body.old_password, admin.hashed_password):
-        return ServiceResponse.error(
-            message="L'ancien mot de passe est incorrect.",
-            status_code=401,
-            data={"error": "password"}
-        )
+        return ServiceResponse.error("Ancien mot de passe incorrect.", 401)
     
-    hashed_password = password_service.hash_password(body.new_password)
-    admin_repo.update_password(admin_id=admin.id, new_hashed_password=hashed_password)
+    new_hashed = password_service.hash_password(body.new_password)
+    await admin_repo.update_password(admin_id=admin.id, new_hashed_password=new_hashed)
     
-    return ServiceResponse.success(
-        message="Ton mot de passe a été mis à jour avec succès.",
-        status_code=200,
-        data=None
-    )
+    return ServiceResponse.success("Mot de passe mis à jour avec succès.")

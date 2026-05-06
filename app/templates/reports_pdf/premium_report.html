@@ -71,6 +71,32 @@
             color: var(--dark);
         }
 
+        /* --- Sommaire / Intro --- */
+        .chart-section {
+            text-align: center;
+            margin: 2cm 0;
+        }
+
+        .chart-img {
+            width: 14cm;
+            height: 14cm;
+            border-radius: 50%;
+            border: 1pt solid var(--soft-gold);
+            margin: 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background-color: #fafafa;
+            color: var(--gold);
+            font-style: italic;
+        }
+
+        .chart-img-container {
+            position: relative;
+            margin: 2cm auto;
+            width: 14cm;
+        }
+        
         /* --- Tableaux et Grilles --- */
         .section-title {
             font-size: 18pt;
@@ -139,16 +165,16 @@
     <div class="page-break"></div>
 
     <!-- PAGE 2: CARTE DU CIEL -->
-    {% if chart_image_url %}
-    <div class="text-center">
-        <h2 class="section-title">VOTRE CARTE DU CIEL</h2>
-        <div style="margin: 2cm 0;">
-            <img src="{{ chart_image_url }}" style="width: 14cm; height: 14cm; border-radius: 50%; border: 1px solid var(--soft-gold);">
+    <div class="chart-section">
+        <h2 style="font-family: 'Montserrat'; font-weight: 300; letter-spacing: 4px; margin-bottom: 2.5rem;">VOTRE CARTE DU CIEL</h2>
+        <div class="chart-img">
+            <img src="https://thumbs.dreamstime.com/b/une-image-sur-le-th%C3%A8me-c%C3%A9leste-pr%C3%A9sente-carte-astrologique-complexe-superpos%C3%A9e-%C3%A0-un-412848781.jpg" class="chart-img" >
         </div>
-        <p style="margin-top: 1cm; font-style: italic; color: #666;">"Les astres inclinent, mais ils ne déterminent pas."</p>
+        <p style="max-width: 60%; margin: 1.5cm auto; font-style: italic; color: #555; font-size: 14pt;">
+            "Le ciel au moment de votre premier souffle est une empreinte unique, une carte de votre potentiel infini."
+        </p>
     </div>
     <div class="page-break"></div>
-    {% endif %}
 
     <!-- SECTION I: POSITIONS PLANÉTAIRES -->
     <div class="section">

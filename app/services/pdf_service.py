@@ -1,7 +1,8 @@
 import os
 from weasyprint import HTML
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Dict, Any
 
 class PDFService:
     def __init__(self):
@@ -9,19 +10,21 @@ class PDFService:
         self.env = Environment(loader=FileSystemLoader(template_path))
 
 
-    def render_template(self, template_name: str, data: dict) -> str:
+    async def render_template(self, template_name: str, data: Dict[str, Any]) -> str:
         try:
             template = self.env.get_template(f"reports_pdf/{template_name}.html")
-            return template.render(**data, generated_at=datetime.now().strftime("%d/%m/%Y"))
+            
+            now = datetime.now(timezone.utc).strftime("%d/%m/%Y")
+            
+            return template.render(**data, generated_at=now)
 
         except TemplateNotFound:
             raise Exception(f"Report template '{template_name}' not found")
-
         except Exception as e:
             raise Exception(f"Template rendering error: {str(e)}")
+        
 
-
-    def generate_astrological_report(self, template_name: str, data: dict, output_filename: str) -> str:
+    async def generate_astrological_report(self, template_name: str, data: Dict[str, Any], output_filename: str) -> str:
         try:
             output_dir = "static/reports"
             if not os.path.exists(output_dir):
@@ -29,7 +32,7 @@ class PDFService:
             
             pdf_path = os.path.join(output_dir, output_filename)
 
-            html_content = self.render_template(template_name, data)
+            html_content = await self.render_template(template_name, data)
 
             HTML(string=html_content, base_url=".").write_pdf(pdf_path)
             
@@ -38,4 +41,3 @@ class PDFService:
         except Exception as e:
             print(f"Erreur lors de la génération du PDF : {str(e)}")
             raise e
-        

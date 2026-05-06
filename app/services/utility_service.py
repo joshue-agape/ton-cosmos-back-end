@@ -4,30 +4,30 @@ from argon2 import PasswordHasher
 from app.core.config import settings
 from argon2.exceptions import VerifyMismatchError
 from datetime import datetime, timedelta, timezone
+from typing import Optional, Dict
 
 ph = PasswordHasher()
 
 class PasswordService:
-    # HASH PASSWORD
     def hash_password(self, password: str) -> str:
         return ph.hash(password)
 
-    # VERIFY PASSWORD
-    def verify_password(self, plain, hashed):
+    def verify_password(self, plain: str, hashed: str) -> bool:
         try:
             return ph.verify(hashed, plain)
         except VerifyMismatchError:
             return False
 
 
-jwst_secret_key = settings.JWT_SECRET_KEY
 class JWTService:
     def __init__(self):
-        self.secret_key = jwst_secret_key
+        self.secret_key = settings.JWT_SECRET_KEY
         self.algorithm = "HS256"
 
+
     # ACCESS TOKEN (15 min)
-    def create_access_token(self, user_id: int, email: str, secret_key: str = jwst_secret_key):
+    def create_access_token(self, user_id: int, email: str, secret_key: Optional[str] = None) -> str:
+        key = secret_key or self.secret_key
         expire = datetime.now(timezone.utc) + timedelta(minutes=15)
 
         payload = {
@@ -37,14 +37,13 @@ class JWTService:
             "exp": expire
         }
 
-        return jwt.encode(payload, secret_key, algorithm=self.algorithm)
-
+        return jwt.encode(payload, key, algorithm=self.algorithm)
+    
+    
     # REFRESH TOKEN
-    def create_refresh_token(self, user_id: int, email: str, remember: bool = False):
-        if remember:
-            expire = datetime.now(timezone.utc) + timedelta(days=7)
-        else:
-            expire = datetime.now(timezone.utc) + timedelta(hours=24)
+    def create_refresh_token(self, user_id: int, email: str, remember: bool = False) -> str:
+        days = 7 if remember else 1
+        expire = datetime.now(timezone.utc) + timedelta(days=days)
 
         payload = {
             "sub": str(user_id),
@@ -55,8 +54,9 @@ class JWTService:
 
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
 
+
     # NEW REFRESH TOKEN
-    def create_new_refresh_token(self, user_id: int, email: str, expire: datetime):
+    def create_new_refresh_token(self, user_id: int, email: str, expire: datetime) -> str:
         if expire.tzinfo is None:
             expire = expire.replace(tzinfo=timezone.utc)
 
@@ -69,26 +69,29 @@ class JWTService:
         }
 
         return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
+    
 
     # DECODE TOKEN
-    def decode_token(self, token: str, secret_key: str = jwst_secret_key):
+    def decode_token(self, token: str, secret_key: Optional[str] = None) -> Optional[dict]:
+        key = secret_key or self.secret_key
         try:
-            return jwt.decode(token, secret_key, algorithms=[self.algorithm])
+            return jwt.decode(token, key, algorithms=[self.algorithm])
         except Exception as e:
-            print("JWT DECODE ERROR:", str(e))
+            print(f"JWT DECODE ERROR: {str(e)}")
             return None
 
 
 class UtilsService:
-    def get_device(self, request: Request):
+    def get_device(self, request: Request) -> Dict[str, str]:
         ip = request.headers.get("x-forwarded-for")
         if ip:
             ip = ip.split(",")[0]
         else:
-            ip = request.client.host
+            ip = request.client.host if request.client else "unknown"
 
-        print("Device IP =", ip)
-        user_agent = request.headers.get("user-agent")
-        print("Device info =", user_agent)
-
-        return { "device": user_agent, "IP": ip }
+        user_agent = request.headers.get("user-agent", "unknown")
+        
+        return {
+            "device": user_agent,
+            "IP": ip
+        }

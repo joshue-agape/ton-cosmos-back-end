@@ -1,30 +1,34 @@
 import stripe
-import time as time_module
-from datetime import datetime
-from sqlalchemy.orm import Session
-from app.database.deps import get_db
+import asyncio
+import logging
+from datetime import datetime, timezone
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, BackgroundTasks, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
-from app.core.config import settings
 from pydantic import BaseModel
+
+from app.database.deps import get_db
+from app.core.config import settings
+from app.core.websocket_manager import manager
 from app.services.pdf_service import PDFService
 from app.services.stripe_service import StripeService
 from app.services.astrology_service import AstrologyService
-from app.schemas.order import *
 from app.services.email_service import EmailService
 from app.services.claude_service import AIService
 from app.services.response_service import ServiceResponse
 from app.repositories.order_repository import OrderRepository
 from app.repositories.report_repository import ReportRepository
-from app.services.response_service import ServiceResponse
-from app.core.websocket_manager import *
-
-from app.schemas.report import *
+from app.schemas.order import OrderStatus
+from app.schemas.report import ReportCreate
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
+
+# Configuration Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
 endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
 stripe.api_version = "2026-04-22.dahlia"
 
+# Initialisation des services
 ai_service = AIService()
 pdf_service = PDFService()
 email_service = EmailService()
@@ -38,11 +42,10 @@ class OrderRequest(BaseModel):
     amount_total: int
     email: str
 
-
 @router.post("/create-checkout-session")
 async def create_checkout(body: OrderRequest):
     try:
-        session = stripe_service.create_checkout_session(
+        session = await stripe_service.create_checkout_session(
             plan_type=body.plan_type,
             amount_total=body.amount_total,
             order_id=body.order_id,
@@ -50,192 +53,145 @@ async def create_checkout(body: OrderRequest):
         )
         
         return ServiceResponse.success(
-            status_code=200,
-            message="Checkout session created successfully",
-            data={
-                "checkout_url": session.url,
-                "session_id": session.id
-            }
+            message="Session de paiement créée",
+            data={"checkout_url": session.url, "session_id": session.id}
         )
-
-    except HTTPException as e:
-        return ServiceResponse.error(
-            status_code=e.status_code,
-            message=str(e.detail),
-            data=None
-        )
-
     except Exception as e:
-        return ServiceResponse.error(
-            status_code=500,
-            message="An internal server error occurred",
-            data={"details": str(e)}
-        )
+        logger.error(f"Erreur Stripe Session: {e}")
+        return ServiceResponse.error(message="Erreur lors de la création du paiement", status_code=500)
+   
         
-
 @router.websocket("/ws/{session_id}")
-async def websocket_endpoint(websocket: WebSocket, session_id: str):
+async def websocket_endpoint_for_check_steps(websocket: WebSocket, session_id: str):
     await manager.connect(session_id, websocket)
     try:
         while True:
             await websocket.receive_text() 
     except WebSocketDisconnect:
-        manager.disconnect(session_id)
+        manager.disconnect(session_id, websocket)
         
-        
-async def process_order(order_id: int, session_id: str):
-    db: Session = next(get_db())
-    order_repo = OrderRepository(db)
-    report_repo = ReportRepository(db)
-    
-    if order_repo.get_by_stripe_session(session_id):
-        return
-    
-    start_time = time_module.perf_counter()
-    
-    order = order_repo.get_by_id(order_id)
-    if not order:
-        db.close()
-        return
 
-    order.stripe_session_id = session_id
-    order_repo.update_status(order.id, OrderStatus.PROCESSING)
-    
-    socket_session_id = f"ton-cosmos-{order_id}"
-    
-    await manager.send_update(socket_session_id, { "step": 1, "status": True })
-    
-    report_data = ReportCreate(
-        order_id=order.id,
-        generation_duration=0
-    )
-    report = report_repo.create(report_data)
-    error_message = None
-
+@router.websocket("/order/ws/order-status-for-admin")
+async def websocket_endpoint_for_check_new_event(websocket: WebSocket):
+    admin_socket_session = "order-status-for-admin"
+    await manager.connect(admin_socket_session, websocket)
     try:
-        birth_datetime = order.birth_date.replace(tzinfo=None)
-        if order.birth_time:
-            birth_datetime = birth_datetime.replace(
-                hour=order.birth_time.hour,
-                minute=order.birth_time.minute,
-                second=0, microsecond=0
+        while True:
+            await websocket.receive_text() 
+    except WebSocketDisconnect:
+        manager.disconnect(admin_socket_session, websocket)
+
+
+async def process_order(order_id: int, stripe_session_id: str):
+    async for db in get_db():
+        order_repo = OrderRepository(db)
+        report_repo = ReportRepository(db)
+        
+        admin_ws = "order-status-for-admin"
+        socket_session_id = f"ton-cosmos-{order_id}"
+        
+        try:
+            existing_order = await order_repo.get_by_stripe_session(stripe_session_id)
+            
+            if existing_order and existing_order.status == OrderStatus.COMPLETED:
+                return
+
+            order = await order_repo.get_by_id(order_id)
+            
+            if not order: 
+                logger.error(f"Order {order_id} not found in DB")
+                return
+
+            start_time = asyncio.get_event_loop().time()
+            await order_repo.update_status(order_id=order.id, status=OrderStatus.PROCESSING, stripe_session_id=stripe_session_id)
+            await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.PROCESSING})
+            await manager.send_update(socket_session_id, {"step": 1, "status": True})
+
+            report = await report_repo.create(ReportCreate(order_id=order.id, generation_duration=0))
+            # report = await report_repo.get_by_order_id(order_id=order_id)
+
+            birth_dt = order.birth_date.replace(tzinfo=None)
+            if order.birth_time:
+                birth_dt = datetime.combine(birth_dt.date(), order.birth_time)
+
+            chart = await astrology_service.get_full_chart(
+                birth_date=birth_dt, 
+                lat=order.latitude,
+                lon=order.longitude
             )
-
-        chart = astrology_service.get_full_chart(
-            birth_date=birth_datetime, 
-            lat=order.latitude,
-            lon=order.longitude
-        )
-        
-        report_repo.update_astral_data_json(report_id=report.id, astral_data=chart)
-        
-        await manager.send_update(socket_session_id, { "step": 2, "status": True })
-        
-        BASE_SECTIONS = [
-            "introduction", 
-            "piliers", 
-            "mental", 
-            "dominantes", 
-            "maisons_vie_1", 
-            "maisons_vie_2", 
-            "amour", 
-            "mission", 
-            "destin",
-            "conseils", 
-            "synthese"
-        ]
-
-        EXTRA_COMPLETE = [
-            "ombres", 
-            "aspects_majeurs", 
-            "predictions"
-        ]
-
-        if order.plan_type.lower() == "complet":
-            sections_to_generate = BASE_SECTIONS[:-2] + EXTRA_COMPLETE + BASE_SECTIONS[-2:]
-        else:
-            sections_to_generate = BASE_SECTIONS
             
-        final_report_sections = []
-        
-        for section_id in enumerate(sections_to_generate):
-            print(f"STEP = {section_id}")
-
-            section_json = ai_service.generate_astrology_report(chart, order.full_name, section_id)
-            final_report_sections.append(section_json)
-
-        ai_content_final = { "sections": final_report_sections }
-        
-        await manager.send_update(socket_session_id, { "step": 3, "status": True })
-        
-        report_repo.update_ai_content_json(report_id=report.id, ai_content=ai_content_final)
-        
-        safe_name = (order.full_name or "user").replace(" ", "-")
-        timestamp = datetime.now().strftime("%Y%m%d")
-        output_filename = f"report-{safe_name}-{timestamp}.pdf"
-
-        pdf_path = pdf_service.generate_astrological_report(
-            template_name="premium_report",
-            data={
-                "full_name": order.full_name,
-                "birth_chart": chart.get("birth_chart", {}),
-                "ai_content": ai_content_final,
-                "forecast": chart.get("forecast", []),
-                "birth_date_info": f"{order.birth_date} {order.birth_time}",
-                "current_date": datetime.now().strftime("%d/%m/%Y"),
-                "chart_image_url": chart.get("chart_image_url", "")
-            },
-            output_filename=output_filename
-        )
-        
-        duration = round(time_module.perf_counter() - start_time, 2)
-        report_repo.finalize_pdf(
-            report_id=report.id, 
-            pdf_url=pdf_path, 
-            pdf_name=output_filename, 
-            duration=duration
-        )
-        
-        await manager.send_update(socket_session_id, { "step": 4, "status": True })
-        
-        email_data = {
-            "full_name": order.full_name,
-            "current_year": datetime.now().year
-        }
-        
-        email_result = await email_service.send_email_with_attachment(
-            to=order.email,
-            subject="Ton Cosmos : Ton Rapport Astral est arrivé !",
-            template_name="report_ready",
-            data=email_data,
-            attachment_path=pdf_path
-        )
-        
-        if email_result["success"]:
-            order_repo.update_status(order.id, OrderStatus.COMPLETED)
+            logger.info(f"CHART = {chart}")
             
-            await manager.send_update(socket_session_id, { "step": 5, "status": True })
+            await report_repo.update_astral_data_json(report.id, chart)
+            await manager.send_update(socket_session_id, {"step": 2, "status": True})
+
+            sections = ["introduction", "piliers", "mental", "dominantes", "maisons_vie_1", 
+                        "maisons_vie_2", "amour", "mission", "destin", "conseils", "synthese"]
             
-        else:
-            error_message = f"Email failed: {email_result.get('message')}"
-            order_repo.update_status(order.id, OrderStatus.FAILED)
-            await manager.send_update(socket_session_id, { "step": 5, "status": False })
+            if order.plan_type.lower() == "complet":
+                sections[8:8] = ["ombres", "aspects_majeurs", "predictions"]
 
-        if duration > 300:
-            print(f"ALERT: Generation took {duration}s for order {order_id}")
+            final_sections = []
+            for section_id in sections:
+            
+                print(f"SECTION ANALYS IA = {section_id}")
+            
+                section_content = await ai_service.generate_astrology_report(chart, order.full_name, section_id)
+                final_sections.append(section_content)
 
-    except Exception as e:
-        error_message = str(e)
-        print(f"CRITICAL ERROR [Order {order_id}]: {error_message}")
-        order_repo.update_status(order.id, OrderStatus.FAILED)
-        await manager.send_update(socket_session_id, { "step": 2, "status": False })
+            ai_content = {"sections": final_sections}
+            await report_repo.update_ai_content_json(report.id, ai_content)
+            await manager.send_update(socket_session_id, {"step": 3, "status": True})
+
+            safe_name = order.full_name.replace(" ", "-") if order.full_name else "user"
+            output_filename = f"report-{order.plan_type.lower()}-{safe_name}-{datetime.now().strftime('%Y%m%d')}.pdf"
+
+            pdf_path = await pdf_service.generate_astrological_report(
+                template_name="premium_report",
+                data={
+                    "full_name": order.full_name,
+                    "birth_chart": chart.get("birth_chart", {}),
+                    "ai_content": ai_content,
+                    "birth_date_info": f"{order.birth_date} {order.birth_time}"
+                },
+                output_filename=output_filename
+            )
+                
+            logger.info(f"PDF PATH = {pdf_path}")
+
+            duration = round(asyncio.get_event_loop().time() - start_time, 2)
+            await report_repo.finalize_pdf(report.id, pdf_path, output_filename, duration)
+            await manager.send_update(socket_session_id, {"step": 4, "status": True})
+
+            email_result = await email_service.send_email(
+                to=order.email,
+                subject="Ton Cosmos : Ton Rapport Astral est prêt !",
+                template_name="report_ready",
+                data={"full_name": order.full_name, "current_year": datetime.now().year},
+                attachment_path=pdf_path
+            )
+                
+            logger.info(f"EMAIL RESULT = {email_result}")
+
+            if email_result.get("success"):
+                logger.info(f"Email success")
+                await order_repo.update_status(order.id, OrderStatus.COMPLETED)
+                await manager.send_update(socket_session_id, {"step": 5, "status": True})
+                await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.COMPLETED})
+            else:
+                raise Exception(f"Email error: {email_result.get('message')}")
+
+        except Exception as e:
+            logger.error(f"CRITICAL ERROR [Order {order_id}]: {str(e)}")
+            await order_repo.update_status(order_id, OrderStatus.FAILED)
+            await manager.send_update(socket_session_id, {"step": 1, "status": False, "error": str(e)})
+            if 'report' in locals():
+                await report_repo.log_error(report.id, str(e))
         
-    finally:
-        if error_message:
-            report_repo.log_error(report.id, error_message)
+        finally:
+            await db.commit()
         
-        db.commit()
-        db.close()
+        break
     
     
 @router.post("/stripe/webhook")
@@ -250,6 +206,7 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
             endpoint_secret
         )
     except Exception as e:
+        logger.error(f"Signature verification failed: {str(e)}")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
     if event["type"] != "checkout.session.completed":
@@ -263,21 +220,24 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
     order_id = metadata.get("order_id")
     payment_status = session.get("payment_status")
 
-    print(f"DEBUG: Session={session_id} | Order={order_id} | Status={payment_status}")
+    logger.info(f"DEBUG: Session={session_id} | Order={order_id} | Status={payment_status}")
 
     if not session_id or not order_id:
+        logger.warning("Missing data: session_id or order_id in metadata")
         return {"status": "error", "message": "Missing order_id in metadata"}
 
     if payment_status != "paid":
-        print(f"Paiement non finalisé (Status: {payment_status})")
+        logger.info(f"Paiement non finalisé (Status: {payment_status})")
         return {"status": "not_paid"}
 
     try:
-        print(f"Validation commande {order_id} en cours...")
+        logger.info(f"Validation commande {order_id} lancée en arrière-plan...")
+        
         background_tasks.add_task(process_order, int(order_id), session_id)
+        
     except ValueError:
-        print(f"Erreur: order_id '{order_id}' n'est pas un nombre.")
+        logger.error(f"Erreur: order_id '{order_id}' n'est pas un nombre valide.")
         return {"status": "invalid_id"}
     
-    return Response(status_code=200)
+    return Response(content="Webhook processed", status_code=200)
 

@@ -1,77 +1,64 @@
-from sqlalchemy.orm import Session
+from sqlalchemy import select, delete
+from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone
+from typing import List, Optional
 
 from app.models.token import Token
 
 
 class TokenRepository:
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    # CREATE TOKEN
-    def create_token(self, token: Token) -> Token:
+
+    async def create_token(self, token: Token) -> Token:
         self.db.add(token)
-        self.db.commit()
-        self.db.refresh(token)
-
+        await self.db.commit()
+        await self.db.refresh(token)
         return token
+    
 
-    # GET TOKEN BY HASH
-    def get_by_hash(self, token_hash: str) -> Token | None:
-        return (
-            self.db.query(Token)
-            .filter(Token.token_hash == token_hash)
-            .first()
-        )
+    async def get_by_hash(self, token_hash: str) -> Optional[Token]:
+        query = select(Token).filter(Token.token_hash == token_hash)
+        result = await self.db.execute(query)
+        return result.scalars().first()
+    
 
-    # GET ALL TOKENS FOR USER
-    def get_user_tokens(self, user_id: int) -> list[Token]:
-        return (
-            self.db.query(Token)
-            .filter(Token.user_id == user_id)
-            .all()
-        )
+    async def get_user_tokens(self, user_id: int) -> List[Token]:
+        query = select(Token).filter(Token.user_id == user_id)
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+    
 
-    # GET VALID TOKENS (NOT EXPIRED)
-    def get_valid_tokens(self, user_id: int) -> list[Token]:
+    async def get_valid_tokens(self, user_id: int) -> List[Token]:
         now = datetime.now(timezone.utc)
-
-        return (
-            self.db.query(Token)
-            .filter(
-                Token.user_id == user_id,
-                Token.exp > now
-            )
-            .all()
+        query = select(Token).filter(
+            Token.user_id == user_id,
+            Token.exp > now
         )
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+    
 
-    # DELETE TOKEN (logout single session)
-    def delete_token(self, token_hash: str) -> bool:
-        token = self.get_by_hash(token_hash)
+    async def delete_token(self, token_hash: str) -> bool:
+        token = await self.get_by_hash(token_hash)
 
         if not token:
             return False
 
-        self.db.delete(token)
-        self.db.commit()
+        await self.db.delete(token)
+        await self.db.commit()
         return True
+    
 
-    # DELETE ALL TOKENS FOR USER (logout all devices)
-    def delete_user_tokens(self, user_id: int):
-        (
-            self.db.query(Token)
-            .filter(Token.user_id == user_id)
-            .delete()
-        )
-        self.db.commit()
+    async def delete_user_tokens(self, user_id: int) -> None:
+        query = delete(Token).filter(Token.user_id == user_id)
+        await self.db.execute(query)
+        await self.db.commit()
+        
 
-    # DELETE EXPIRED TOKENS (cleanup job)
-    def delete_expired_tokens(self):
+    async def delete_expired_tokens(self) -> None:
         now = datetime.now(timezone.utc)
-
-        (
-            self.db.query(Token)
-            .filter(Token.exp <= now)
-            .delete()
-        )
-        self.db.commit()
+        query = delete(Token).filter(Token.exp <= now)
+        await self.db.execute(query)
+        await self.db.commit()

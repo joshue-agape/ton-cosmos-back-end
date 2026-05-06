@@ -1,25 +1,26 @@
 import os
-import time
+import asyncio
 from typing import Optional
 from pydantic import BaseModel
 from fastapi.responses import FileResponse
 from fastapi import APIRouter, HTTPException
 from datetime import datetime, time as dt_time
 
-from app.services.astrology_service import *
-from app.services.pdf_service import *
-from app.services.claude_service import *
+from app.services.astrology_service import AstrologyService
+from app.services.pdf_service import PDFService
+from app.services.claude_service import AIService
 
 router = APIRouter()
 
+# Initialisation des services
 astrology_service = AstrologyService()
 pdf_service = PDFService()
 claude_service = AIService()
 
-@router.get("/")
-def health_check():
-    return {"status": "ok"}
 
+@router.get("/")
+async def health_check():
+    return {"status": "ok", "service": "Indira Astro API"}
 
 class BodyTest(BaseModel):
     birth_date: datetime
@@ -27,49 +28,45 @@ class BodyTest(BaseModel):
     latitude: float
     longitude: float
 
-
 @router.post("/get-full-chart")
-def testCalcule(body: BodyTest):
-    start_time = time.perf_counter()
+async def get_chart_endpoint(body: BodyTest):
+    start_time = asyncio.get_event_loop().time()
+    
     birth_datetime = body.birth_date
     
     if birth_datetime.tzinfo is not None:
         birth_datetime = birth_datetime.replace(tzinfo=None)
 
     if body.birth_time is not None:
-        birth_datetime = birth_datetime.replace(
-            hour=body.birth_time.hour,
-            minute=body.birth_time.minute,
-            second=body.birth_time.second,
-            microsecond=body.birth_time.microsecond
-        )
+        birth_datetime = datetime.combine(birth_datetime.date(), body.birth_time)
 
-    chart = astrology_service.get_full_chart(
+    chart = await astrology_service.get_full_chart(
         birth_datetime,
         body.latitude,
         body.longitude
     )
 
-    print("Delay =", round(time.perf_counter() - start_time, 3), "s")
+    duration = round(asyncio.get_event_loop().time() - start_time, 3)
+    print(f"Calcul Indira terminé en : {duration}s")
 
     return chart
 
 
 @router.post("/get-ia-response")
-def testGenerateIA():
-    claude_ai = claude_service.test_claude_connection()
+async def test_generate_ia():
+    claude_ai = await claude_service.test_claude_connection()
     return claude_ai
 
 
 @router.post("/generate-report")
-def testCreatePDF():
+async def generate_report_endpoint():
     data = {}
 
-    safe_name = ("cosmos" or "user").replace(" ", "-")
-    timestamp = datetime.now().strftime("%Y%m%d")
+    safe_name = "cosmos-user"
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M")
     output_filename = f"report-{safe_name}-{timestamp}.pdf"
     
-    pdf_path = pdf_service.generate_astrological_report(
+    pdf_path = await pdf_service.generate_astrological_report(
         template_name="premium_report_test",
         data=data,
         output_filename=output_filename
@@ -77,18 +74,19 @@ def testCreatePDF():
 
     return {
         "success": True,
-        "pdf_path": pdf_path
+        "pdf_path": pdf_path,
+        "filename": output_filename
     }
     
 
 @router.get("/get-pdf/{pdf_name}")
-def get_pdf(pdf_name: str):
+async def get_pdf(pdf_name: str):
     file_path = os.path.join("static/reports", pdf_name)
 
     if not os.path.exists(file_path):
         raise HTTPException(
             status_code=404,
-            detail="PDF introuvable"
+            detail="Le rapport demandé est introuvable."
         )
 
     return FileResponse(
