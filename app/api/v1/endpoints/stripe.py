@@ -133,38 +133,38 @@ async def process_order(order_id: int, stripe_session_id: str):
             
             pause_event = asyncio.Event()
             pause_event.set()
-            
+                
             async def fetch_section(section_id, semaphore, chart, order):
-                    max_retries = 10 
-                    
-                    for attempt in range(max_retries):
-                        await pause_event.wait()
+                max_retries = 15
+                for attempt in range(max_retries):
+                    await pause_event.wait()
+                    async with semaphore:
+                        try:
+                            print(f"Tentative ({attempt+1}) : {section_id}")
+                            return await ai_service.generate_astrology_report(
+                                chart, order.full_name, section_id
+                            )
+                        except Exception as e:
+                            if "429" in str(e):
+                                if pause_event.is_set():
+                                    pause_event.clear()
+                                    print(f"Rate limit sur {section_id}. Pause de 5s...")
+                                    await asyncio.sleep(5)
+                                    pause_event.set()
+                                continue 
 
-                        async with semaphore:
-                            try:
-                                print(f"Tentative ({attempt+1}) : {section_id}")
-                                return await ai_service.generate_astrology_report(
-                                    chart, order.full_name, section_id
-                                )
-                                
-                            except Exception as e:
-                                if "429" in str(e):
-                                    if pause_event.is_set():
-                                        pause_event.clear()
-                                        print(f"Rate limit sur {section_id}. Pause de 5s...")
-                                        await asyncio.sleep(5)
-                                        pause_event.set()
-                                    
-                                    continue 
+                            print(f"Erreur critique sur {section_id}: {e}")
+                            return None 
 
-                                print(f"Erreur critique sur {section_id}: {e}")
-                                return f"Données indisponibles ({section_id})"
+                print(f"Timeout pour {section_id}")
+                return None
 
-                    return f"Timeout après plusieurs essais pour {section_id}"
-            
             semaphore = asyncio.Semaphore(5)
             tasks = [fetch_section(s, semaphore, chart, order) for s in sections]
-            final_sections = await asyncio.gather(*tasks)
+            
+            raw_results = await asyncio.gather(*tasks)
+
+            final_sections = [res for res in raw_results if res is not None]
 
             ai_content = {"sections": final_sections}
             await report_repo.update_ai_content_json(report.id, ai_content)
@@ -183,8 +183,6 @@ async def process_order(order_id: int, stripe_session_id: str):
                 },
                 output_filename=output_filename
             )
-                
-            logger.info(f"PDF PATH = {pdf_path}")
 
             duration = round(asyncio.get_event_loop().time() - start_time, 2)
             await report_repo.finalize_pdf(report.id, pdf_path, output_filename, duration)
@@ -197,8 +195,6 @@ async def process_order(order_id: int, stripe_session_id: str):
                 data={"full_name": order.full_name, "current_year": datetime.now().year},
                 attachment_path=pdf_path
             )
-                
-            logger.info(f"EMAIL RESULT = {email_result}")
 
             if email_result.get("success"):
                 logger.info(f"Email success")
@@ -333,36 +329,36 @@ async def process_resend_email(order_id: int):
                 pause_event.set()
                 
                 async def fetch_section(section_id, semaphore, chart, order):
-                        max_retries = 10 
-                        
-                        for attempt in range(max_retries):
-                            await pause_event.wait()
+                    max_retries = 15
+                    for attempt in range(max_retries):
+                        await pause_event.wait()
+                        async with semaphore:
+                            try:
+                                print(f"Tentative ({attempt+1}) : {section_id}")
+                                return await ai_service.generate_astrology_report(
+                                    chart, order.full_name, section_id
+                                )
+                            except Exception as e:
+                                if "429" in str(e):
+                                    if pause_event.is_set():
+                                        pause_event.clear()
+                                        print(f"Rate limit sur {section_id}. Pause de 5s...")
+                                        await asyncio.sleep(5)
+                                        pause_event.set()
+                                    continue 
 
-                            async with semaphore:
-                                try:
-                                    print(f"Tentative ({attempt+1}) : {section_id}")
-                                    return await ai_service.generate_astrology_report(
-                                        chart, order.full_name, section_id
-                                    )
-                                    
-                                except Exception as e:
-                                    if "429" in str(e):
-                                        if pause_event.is_set():
-                                            pause_event.clear()
-                                            print(f"Rate limit sur {section_id}. Pause de 5s...")
-                                            await asyncio.sleep(5)
-                                            pause_event.set()
-                                        
-                                        continue 
+                                print(f"Erreur critique sur {section_id}: {e}")
+                                return None 
 
-                                    print(f"Erreur critique sur {section_id}: {e}")
-                                    return f"Données indisponibles ({section_id})"
+                    print(f"Timeout pour {section_id}")
+                    return None
 
-                        return f"Timeout après plusieurs essais pour {section_id}"
-                
                 semaphore = asyncio.Semaphore(5)
                 tasks = [fetch_section(s, semaphore, chart, order) for s in sections]
-                final_sections = await asyncio.gather(*tasks)
+                
+                raw_results = await asyncio.gather(*tasks)
+
+                final_sections = [res for res in raw_results if res is not None]
 
                 ai_content = {"sections": final_sections}
                 await report_repo.update_ai_content_json(report.id, ai_content)
