@@ -259,41 +259,7 @@
                 <h2 class="section-title">Analyse Personnalisée</h2>
                 <div class="paragraph">{{ ai_content | replace('\n', '<br>') | safe }}</div>
             </div>
-            <div class="page-break"></div>
         {% endif %}
     {% endif %}
-
-    <!-- SECTION IV: PRÉVISIONS -->
-    <div class="section">
-        <h2 class="section-title">III. Calendrier des Transits</h2>
-        <p style="font-size: 10pt; color: #666; margin-bottom: 20px;">Voici vos mouvements planétaires majeurs pour les mois à venir :</p>
-        <table>
-            <thead>
-                <tr>
-                    <th>Mois</th>
-                    <th>Jupiter <span style="font-size: 8pt; font-weight: normal;">(Chance)</span></th>
-                    <th>Saturne <span style="font-size: 8pt; font-weight: normal;">(Structure)</span></th>
-                    <th>Pluton <span style="font-size: 8pt; font-weight: normal;">(Transformation)</span></th>
-                </tr>
-            </thead>
-            <tbody>
-                {% if forecast %}
-                    {% for item in forecast %}
-                    <tr>
-                        <td><strong>{{ item.month }}</strong></td>
-                        <td>{{ item.positions.Jupiter.sign }}</td>
-                        <td>{{ item.positions.Saturne.sign }}</td>
-                        <td>{{ item.positions.Pluton.sign }}</td>
-                    </tr>
-                    {% endfor %}
-                {% else %}
-                    <tr>
-                        <td colspan="4" class="text-center">Données de prévisions non disponibles pour cette période.</td>
-                    </tr>
-                {% endif %}
-            </tbody>
-        </table>
-    </div>
-
 </body>
 </html>

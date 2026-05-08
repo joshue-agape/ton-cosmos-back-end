@@ -290,17 +290,14 @@ async def process_resend_email(order_id: int):
             order = await order_repo.get_by_id(order_id)
             start_time = asyncio.get_event_loop().time()
             
-            # Initialisation Rapport
             report = await report_repo.get_by_order_id(order_id=order_id)
             if not report:
                 report = await report_repo.create(ReportCreate(order_id=order.id, generation_duration=0))
 
-            # Update Status -> PROCESSING
             await order_repo.update_status(order_id=order.id, status=OrderStatus.PROCESSING)
             await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.PROCESSING})
             await manager.send_update(socket_session_id, {"step": 1, "status": True})
             
-            # --- ÉTAPE 1 : CHART ASTRALE ---
             chart = report.astral_data_json
             if not chart:
                 birth_dt = order.birth_date.replace(tzinfo=None)
@@ -316,7 +313,6 @@ async def process_resend_email(order_id: int):
             
             await manager.send_update(socket_session_id, {"step": 2, "status": True})
                 
-            # --- ÉTAPE 2 : CONTENU IA ---
             ai_content = report.ai_content_json
             if not ai_content:
                 sections = ["introduction", "piliers", "mental", "dominantes", "maisons_vie_1", 
@@ -365,12 +361,12 @@ async def process_resend_email(order_id: int):
             
             await manager.send_update(socket_session_id, {"step": 3, "status": True})
                 
-            # --- ÉTAPE 3 : GÉNÉRATION PDF ---
             pdf_path = report.pdf_url
             if not pdf_path:
                 safe_name = order.full_name.replace(" ", "-") if order.full_name else "user"
                 output_filename = f"report-{order.plan_type.lower()}-{safe_name}-{datetime.now().strftime('%Y%m%d')}.pdf"
 
+                
                 pdf_path = await pdf_service.generate_astrological_report(
                     template_name="premium_report",
                     data={
@@ -381,12 +377,12 @@ async def process_resend_email(order_id: int):
                     },
                     output_filename=output_filename
                 )
+
                 duration = round(asyncio.get_event_loop().time() - start_time, 2)
                 await report_repo.finalize_pdf(report.id, pdf_path, output_filename, duration)
                 
             await manager.send_update(socket_session_id, {"step": 4, "status": True})
             
-            # --- ÉTAPE 4 : ENVOI EMAIL ---
             email_result = await email_service.send_email(
                 to=order.email,
                 subject="Ton Cosmos : Ton Rapport Astral est prêt !",

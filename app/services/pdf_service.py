@@ -1,8 +1,17 @@
 import os
+import asyncio
+from concurrent.futures import ProcessPoolExecutor
 from weasyprint import HTML
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from datetime import datetime, timezone
 from typing import Dict, Any
+import logging
+
+logger = logging.getLogger(__name__)
+pdf_executor = ProcessPoolExecutor(max_workers=2)
+
+def _render_pdf_task(html_content, pdf_path):
+    HTML(string=html_content, base_url=".").write_pdf(pdf_path)
 
 class PDFService:
     def __init__(self):
@@ -23,21 +32,22 @@ class PDFService:
         except Exception as e:
             raise Exception(f"Template rendering error: {str(e)}")
         
-
+        
     async def generate_astrological_report(self, template_name: str, data: Dict[str, Any], output_filename: str) -> str:
+        output_dir = "static/reports"
+        os.makedirs(output_dir, exist_ok=True)
+        pdf_path = os.path.join(output_dir, output_filename)
+
+        html_content = await self.render_template(template_name, data)
+
+        loop = asyncio.get_running_loop()
         try:
-            output_dir = "static/reports"
-            if not os.path.exists(output_dir):
-                os.makedirs(output_dir)
-            
-            pdf_path = os.path.join(output_dir, output_filename)
-
-            html_content = await self.render_template(template_name, data)
-
-            HTML(string=html_content, base_url=".").write_pdf(pdf_path)
-            
+            await asyncio.wait_for(
+                loop.run_in_executor(pdf_executor, _render_pdf_task, html_content, pdf_path),
+                timeout=150.0
+            )
             return pdf_path
-
-        except Exception as e:
-            print(f"Erreur lors de la génération du PDF : {str(e)}")
-            raise e
+        except asyncio.TimeoutError:
+            logger.error("Timeout lors du rendu PDF WeasyPrint")
+            raise Exception("Le rendu du document a pris trop de temps.")
+        
