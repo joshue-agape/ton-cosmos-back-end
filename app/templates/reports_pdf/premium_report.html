@@ -251,7 +251,6 @@
                 </div>
                 {% endif %}
             </div>
-            <div class="page-break"></div>
             {% endfor %}
         {% else %}
             <!-- Cas de secours si ai_content est juste une chaîne de caractères -->
@@ -261,5 +260,41 @@
             </div>
         {% endif %}
     {% endif %}
+    <div class="page-break"></div>
+
+    <!-- SECTION IV: PRÉVISIONS -->
+    <div class="section">
+        <h2 class="section-title">III. Calendrier des Transits</h2>
+        <p style="font-size: 10pt; color: #666; margin-bottom: 20px;">Voici vos mouvements planétaires majeurs pour les mois à venir :</p>
+        <table>
+            <thead>
+                <tr>
+                    <th>Mois</th>
+                    <th>Jupiter <span style="font-size: 8pt; font-weight: normal;">(Chance)</span></th>
+                    <th>Saturne <span style="font-size: 8pt; font-weight: normal;">(Structure)</span></th>
+                    <th>Pluton <span style="font-size: 8pt; font-weight: normal;">(Transformation)</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if forecast %}
+                    {% for item in forecast %}
+                    <tr>
+                        <td style="padding: 8px; border: 1px solid #eee;"><strong>{{ item.period }}</strong></td>
+                        <td style="padding: 8px; border: 1px solid #eee; text-align: center;">{{ item.positions.Jupiter }}</td>
+                        <td style="padding: 8px; border: 1px solid #eee; text-align: center;">{{ item.positions.Saturne }}</td>
+                        <td style="padding: 8px; border: 1px solid #eee; text-align: center;">{{ item.positions.Pluton }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="4" style="padding: 20px; border: 1px solid #eee; text-align: center;">
+                            Données de prévisions non disponibles pour cette période.
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+
 </body>
 </html>

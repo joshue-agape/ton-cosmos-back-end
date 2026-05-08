@@ -179,7 +179,8 @@ async def process_order(order_id: int, stripe_session_id: str):
                     "full_name": order.full_name,
                     "birth_chart": chart.get("birth_chart", {}),
                     "ai_content": ai_content,
-                    "birth_date_info": f"{order.birth_date} {order.birth_time}"
+                    "birth_date_info": f"{order.birth_date} {order.birth_time}",
+                    "forecast": chart.get("forecast", {}),
                 },
                 output_filename=output_filename
             )
@@ -373,7 +374,8 @@ async def process_resend_email(order_id: int):
                         "full_name": order.full_name,
                         "birth_chart": chart.get("birth_chart", {}),
                         "ai_content": ai_content,
-                        "birth_date_info": f"{order.birth_date} {order.birth_time}"
+                        "birth_date_info": f"{order.birth_date} {order.birth_time}",
+                        "forecast": chart.get("forecast", {}),
                     },
                     output_filename=output_filename
                 )
