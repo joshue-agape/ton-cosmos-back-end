@@ -1,3 +1,4 @@
+import re
 import json
 import logging
 import anthropic
@@ -25,7 +26,7 @@ class AIService:
             
             raw_content = response.content[0].text.strip()
             
-            # Nettoyage robuste du Markdown JSON
+            # Nettoyage du Markdown JSON
             if raw_content.startswith("```"):
                 raw_content = raw_content.strip("```json").strip("```").strip()
             
@@ -34,6 +35,53 @@ class AIService:
         except Exception as e:
             logger.error(f"Échec du test de connexion Claude : {e}")
             return {"error": str(e), "integration_status": "failed"}
+
+        
+    async def GenerateSVGMap(self, chart: dict): 
+        prompt = f"""
+        Génère le code SVG d'une carte du ciel.
+        DONNÉES : {chart}
+        
+        RÈGLES CRITIQUES :
+        - RÉPOND UNIQUEMENT AVEC LE CODE SVG. 
+        - PAS DE TEXTE AVANT. 
+        - PAS DE TEXTE APRÈS.
+        - PAS DE BLOC DE CODE MARKDOWN (PAS DE ```).
+        - Dimensions : viewBox="0 0 500 500".
+        """
+        
+        raw_content = ""
+        
+        try:
+            response = await self.client.messages.create(
+                model="claude-opus-4-6", 
+                max_tokens=8000,
+                temperature=0,
+                system="Tu es Indira. Ton unique but est de générer du code SVG valide. Ne salue pas. Ne commente pas.",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            raw_content = response.content[0].text.strip()
+
+            svg_match = re.search(r'(<svg.*?</svg>)', raw_content, re.DOTALL | re.IGNORECASE)
+            
+            if svg_match:
+                svg_code = svg_match.group(1)
+            else:
+                svg_code = raw_content.replace("```svg", "").replace("```", "").strip()
+
+            if "<svg" not in svg_code.lower():
+                logger.error(f"Contenu non-SVG reçu : {raw_content[:200]}")
+                return '<svg width="500" height="500" xmlns="[http://www.w3.org/2000/svg](http://www.w3.org/2000/svg)"></svg>'
+
+            return svg_code
+        
+        except json.JSONDecodeError as e:
+            logger.error(f"Erreur JSON : {raw_content[:200]}")
+            raise Exception("Format JSON invalide reçu de l'IA.")
+        except Exception as e:
+            logger.error(f"Erreur Claude : {e}")
+            raise e
 
 
     async def generate_astrology_report(self, chart: dict, full_name: str, section_key: str) -> Dict[str, Any]:

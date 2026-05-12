@@ -2,6 +2,7 @@ import time
 import stripe
 import asyncio
 import logging
+import locale
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
@@ -125,6 +126,8 @@ async def process_order(order_id: int, stripe_session_id: str):
             await report_repo.update_astral_data_json(report.id, chart)
             await manager.send_update(socket_session_id, {"step": 2, "status": True})
 
+            svg_map = await ai_service.GenerateSVGMap(chart)
+            
             sections = ["introduction", "piliers", "mental", "dominantes", "maisons_vie_1", 
                         "maisons_vie_2", "amour", "mission", "destin", "conseils", "synthese"]
             
@@ -172,15 +175,22 @@ async def process_order(order_id: int, stripe_session_id: str):
 
             safe_name = order.full_name.replace(" ", "-") if order.full_name else "user"
             output_filename = f"report-{order.plan_type.lower()}-{safe_name}-{datetime.now().strftime('%Y%m%d')}.pdf"
-
+            
+            try:
+                locale.setlocale(locale.LC_TIME, "fr_FR.UTF-8")
+            except:
+                locale.setlocale(locale.LC_TIME, "")
+                
             pdf_path = await pdf_service.generate_astrological_report(
                 template_name="premium_report",
                 data={
                     "full_name": order.full_name,
+                    "svg_map": svg_map,
                     "birth_chart": chart.get("birth_chart", {}),
                     "ai_content": ai_content,
                     "birth_date_info": f"{order.birth_date} {order.birth_time}",
                     "forecast": chart.get("forecast", {}),
+                    "current_date": datetime.now().strftime("%d %B %Y")
                 },
                 output_filename=output_filename
             )
@@ -311,9 +321,11 @@ async def process_resend_email(order_id: int):
                     lon=order.longitude
                 )
                 await report_repo.update_astral_data_json(report.id, chart)
-            
+                
             await manager.send_update(socket_session_id, {"step": 2, "status": True})
                 
+            svg_map = await ai_service.GenerateSVGMap(chart)
+            
             ai_content = report.ai_content_json
             if not ai_content:
                 sections = ["introduction", "piliers", "mental", "dominantes", "maisons_vie_1", 
@@ -367,15 +379,21 @@ async def process_resend_email(order_id: int):
                 safe_name = order.full_name.replace(" ", "-") if order.full_name else "user"
                 output_filename = f"report-{order.plan_type.lower()}-{safe_name}-{datetime.now().strftime('%Y%m%d')}.pdf"
 
-                
+                try:
+                    locale.setlocale(locale.LC_TIME, "fr_FR.UTF-8")
+                except:
+                    locale.setlocale(locale.LC_TIME, "")
+                    
                 pdf_path = await pdf_service.generate_astrological_report(
                     template_name="premium_report",
                     data={
                         "full_name": order.full_name,
+                        "svg_map": svg_map,
                         "birth_chart": chart.get("birth_chart", {}),
                         "ai_content": ai_content,
                         "birth_date_info": f"{order.birth_date} {order.birth_time}",
                         "forecast": chart.get("forecast", {}),
+                        "current_date": datetime.now().strftime("%d %B %Y")
                     },
                     output_filename=output_filename
                 )

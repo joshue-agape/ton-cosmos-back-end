@@ -2,8 +2,8 @@ import os
 import asyncio
 from typing import Optional
 from pydantic import BaseModel
-from fastapi.responses import FileResponse
-from fastapi import APIRouter, HTTPException
+from fastapi.responses import FileResponse, Response
+from fastapi import APIRouter, Body, HTTPException
 from datetime import datetime, time as dt_time
 
 from app.services.astrology_service import AstrologyService
@@ -94,3 +94,9 @@ async def get_pdf(pdf_name: str):
         media_type="application/pdf",
         filename=pdf_name
     )
+
+
+@router.post("/get-svg-map")
+async def get_svg_map(chart: dict = Body(...)):
+    svg = await claude_service.GenerateSVGMap(chart)
+    return Response(content=svg, media_type="image/svg+xml")

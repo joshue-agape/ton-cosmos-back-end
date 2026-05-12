@@ -77,24 +77,10 @@
             margin: 2cm 0;
         }
 
-        .chart-img {
-            width: 14cm;
-            height: 14cm;
-            border-radius: 50%;
-            border: 1pt solid var(--soft-gold);
-            margin: 0 auto;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background-color: #fafafa;
-            color: var(--gold);
-            font-style: italic;
-        }
-
-        .chart-img-container {
-            position: relative;
-            margin: 2cm auto;
-            width: 14cm;
+        .chart-container svg {
+            width: 100% !important;
+            height: 100% !important;
+            display: block;
         }
         
         /* --- Tableaux et Grilles --- */
@@ -167,8 +153,8 @@
     <!-- PAGE 2: CARTE DU CIEL -->
     <div class="chart-section">
         <h2 style="font-family: 'Montserrat'; font-weight: 300; letter-spacing: 4px; margin-bottom: 2.5rem;">VOTRE CARTE DU CIEL</h2>
-        <div class="chart-img">
-            <img src="https://thumbs.dreamstime.com/b/une-image-sur-le-th%C3%A8me-c%C3%A9leste-pr%C3%A9sente-carte-astrologique-complexe-superpos%C3%A9e-%C3%A0-un-412848781.jpg" class="chart-img" >
+        <div class="chart-container" style="width: 14cm; height: 14cm; margin: 0 auto;">
+            {{ svg_map | safe }}
         </div>
         <p style="max-width: 60%; margin: 1.5cm auto; font-style: italic; color: #555; font-size: 14pt;">
             "Le ciel au moment de votre premier souffle est une empreinte unique, une carte de votre potentiel infini."
