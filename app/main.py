@@ -37,15 +37,6 @@ app.add_middleware(
     https_only=settings.ENV != "development"
 )
 
-# Configuration du CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["POST", "GET", "PUT", "PATCH", "DELETE"],
-    allow_headers=["*"],
-)
-
 # Inclusion des routes
 app.include_router(api_router, prefix="/api/v1")
 
@@ -57,15 +48,22 @@ app.add_middleware(
         "/api/v1/admin/login",
         "/api/v1/admin/refresh-token",
         "/api/v1/admin/reset-password",
-        "/api/v1/admin/reset-password",
         "/api/v1/stripe/stripe/webhook",
         "/api/v1/admin/forgot-password",
         "/api/v1/admin/verify-reset-token",
         "/api/v1/order/create",
         "/api/v1/stripe/create-checkout-session",
-        "/api/v1/stripe/stripe/webhook",
         "/api/v1/order/find-all-with-report"
     ],
+)
+
+# Configuration du CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["POST", "GET", "PUT", "PATCH", "DELETE"],
+    allow_headers=["*"],
 )
 
 @app.get("/")
