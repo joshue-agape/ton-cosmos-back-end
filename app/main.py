@@ -33,7 +33,7 @@ security = HTTPBasic()
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.SESSION_SECRET,
-    same_site="lax",
+    same_site="none",
     https_only=settings.ENV != "development"
 )
 

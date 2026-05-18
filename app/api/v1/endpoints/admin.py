@@ -64,9 +64,8 @@ async def login(body: LoginPayload, request: Request, response: Response, db: As
         value=refresh_token,
         httponly=True,
         secure=settings.ENV == 'production',
-        samesite="lax",
+        samesite="none",
         max_age=7 * 24 * 60 * 60 if body.remember_me else 24 * 60 * 60,
-        path="/"
     )
 
     return {
