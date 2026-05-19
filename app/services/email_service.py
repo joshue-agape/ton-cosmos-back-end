@@ -28,6 +28,15 @@ class EmailService:
         except Exception as e:
             raise Exception(f"Template rendering error: {str(e)}")
 
+
+    async def _wait_for_file(self, path: str, timeout: int = 5) -> bool:
+        for _ in range(timeout * 2):
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                return True
+            await asyncio.sleep(0.5)
+        return False
+    
+    
     async def _send_via_resend(self, to: str, subject: str, html_content: str, attachment_path: Optional[str]) -> bool:
         params = {
             "from": settings.RESEND_API_FROM,
@@ -36,12 +45,15 @@ class EmailService:
             "html": html_content,
         }
 
-        if attachment_path and os.path.exists(attachment_path):
-            with open(attachment_path, "rb") as f:
-                file_data = f.read()
-            file_name = os.path.basename(attachment_path)
-            base64_content = base64.b64encode(file_data).decode("utf-8")
-            params["attachments"] = [{"filename": file_name, "content": base64_content}]
+        if attachment_path:
+            if await self._wait_for_file(attachment_path):
+                with open(attachment_path, "rb") as f:
+                    file_data = f.read()
+                file_name = os.path.basename(attachment_path)
+                base64_content = base64.b64encode(file_data).decode("utf-8")
+                params["attachments"] = [{"filename": file_name, "content": base64_content}]
+            else:
+                print(f"[ERROR] La pièce jointe est introuvable ou vide après attente : {attachment_path}")
 
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: resend.Emails.send(params))
@@ -56,16 +68,19 @@ class EmailService:
         message.set_content("Veuillez consulter cet email dans un client supportant le HTML.")
         message.add_alternative(html_content, subtype="html")
 
-        if attachment_path and os.path.exists(attachment_path):
-            with open(attachment_path, "rb") as f:
-                file_data = f.read()
-            file_name = os.path.basename(attachment_path)
-            message.add_attachment(
-                file_data,
-                maintype="application",
-                subtype="pdf",
-                filename=file_name
-            )
+        if attachment_path:
+            if await self._wait_for_file(attachment_path):
+                with open(attachment_path, "rb") as f:
+                    file_data = f.read()
+                file_name = os.path.basename(attachment_path)
+                message.add_attachment(
+                    file_data,
+                    maintype="application",
+                    subtype="pdf",
+                    filename=file_name
+                )
+            else:
+                print(f"[ERROR] La pièce jointe est introuvable ou vide après attente : {attachment_path}")
 
         await aiosmtplib.send(
             message,
