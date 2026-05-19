@@ -30,7 +30,7 @@ class EmailService:
 
     async def _send_via_resend(self, to: str, subject: str, html_content: str, attachment_path: Optional[str]) -> bool:
         params = {
-            "from": "Ton Cosmos <onboarding@resend.dev>",
+            "from": settings.RESEND_API_FROM,
             "to": [to],
             "subject": subject,
             "html": html_content,

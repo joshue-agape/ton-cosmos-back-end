@@ -145,11 +145,7 @@ async def resend_email(order_id: int, background_tasks: BackgroundTasks, db: Asy
     return ServiceResponse.success(message="Le processus de génération et d'envoi a été relancé.")
 
 
-async def process_order_pipeline(
-    order_id: int,
-    stripe_session_id: str | None = None,
-    resend: bool = False
-):
+async def process_order_pipeline(order_id: int, stripe_session_id: str | None = None, resend: bool = False):
     async for db in get_db():
         order_repo = OrderRepository(db)
         report_repo = ReportRepository(db)
@@ -163,7 +159,6 @@ async def process_order_pipeline(
                 logger.error(f"Order {order_id} not found")
                 return
 
-            # éviter double traitement Stripe
             if not resend and stripe_session_id:
                 existing = await order_repo.get_by_stripe_session(stripe_session_id)
                 if existing and existing.status == OrderStatus.COMPLETED:
@@ -176,20 +171,19 @@ async def process_order_pipeline(
                 status=OrderStatus.PROCESSING,
                 stripe_session_id=stripe_session_id if not resend else None
             )
+            await db.commit()
 
             await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.PROCESSING})
             await manager.send_update(socket_session_id, {"step": 1, "status": True})
 
-            # REPORT
             report = await report_repo.get_by_order_id(order_id)
             if not report:
                 report = await report_repo.create(
                     ReportCreate(order_id=order.id, generation_duration=0)
                 )
+                await db.commit()
 
-            # CHART
             chart = report.astral_data_json
-
             if not chart:
                 birth_dt = order.birth_date.replace(tzinfo=None)
                 if order.birth_time:
@@ -200,18 +194,16 @@ async def process_order_pipeline(
                     lat=order.latitude,
                     lon=order.longitude
                 )
-
                 await report_repo.update_astral_data_json(report.id, chart)
+                await db.commit()
 
             await manager.send_update(socket_session_id, {"step": 2, "status": True})
 
             # SVG
             svg_map = await ai_service.GenerateSVGMap(chart)
 
-            # AI CONTENT
             ai_content = report.ai_content_json
-
-            if not ai_content:
+            if not ai_content or not ai_content.get("sections"):
                 sections = [
                     "introduction", "piliers", "mental", "dominantes",
                     "maisons_vie_1", "maisons_vie_2",
@@ -243,11 +235,12 @@ async def process_order_pipeline(
 
                 ai_content = {"sections": [r for r in results if r]}
                 await report_repo.update_ai_content_json(report.id, ai_content)
+                await db.commit()
 
             await manager.send_update(socket_session_id, {"step": 3, "status": True})
 
-            # PDF
             pdf_url = report.pdf_url
+            output_filename = report.pdf_filename
 
             if not pdf_url:
                 safe_name = order.full_name.replace(" ", "-") if order.full_name else "user"
@@ -268,17 +261,11 @@ async def process_order_pipeline(
                 )
 
                 duration = round(asyncio.get_event_loop().time() - start_time, 2)
-
-                await report_repo.finalize_pdf(
-                    report.id,
-                    pdf_url,
-                    output_filename,
-                    duration
-                )
+                await report_repo.finalize_pdf(report.id, pdf_url, output_filename, duration)
+                await db.commit()
 
             await manager.send_update(socket_session_id, {"step": 4, "status": True})
 
-            # EMAIL
             file_path = pdf_url.replace("/reports/", "/app/static/reports/")
 
             email_result = await email_service.send_email(
@@ -293,31 +280,28 @@ async def process_order_pipeline(
             )
 
             if not email_result.get("success"):
-                raise Exception(email_result.get("message"))
+                raise Exception(f"Email delivery failed: {email_result.get('message')}")
 
             await order_repo.update_status(order.id, OrderStatus.COMPLETED)
+            await db.commit()
 
             await manager.send_update(socket_session_id, {"step": 5, "status": True})
             await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.COMPLETED})
 
-            await db.commit()
-
         except Exception as e:
-            await db.rollback()
-            logger.error(f"CRITICAL ERROR [Order {order_id}]: {e}")
+            try:
+                await db.rollback()
+            except Exception:
+                pass
+                
+            try:
+                await order_repo.update_status(order_id, OrderStatus.FAILED)
+                await db.commit()
+            except Exception as db_err:
+                logger.error(f"Could not set status to FAILED: {db_err}")
 
-            await order_repo.update_status(order_id, OrderStatus.FAILED)
+            await manager.send_update(socket_session_id, { "step": 1, "status": False, "error": str(e) })
 
-            await manager.send_update(socket_session_id, {
-                "step": 1,
-                "status": False,
-                "error": str(e)
-            })
-
-            await manager.send_update(admin_ws, {
-                "order_id": order_id,
-                "status": OrderStatus.FAILED
-            })
+            await manager.send_update(admin_ws, { "order_id": order_id, "status": OrderStatus.FAILED })
 
         break
-

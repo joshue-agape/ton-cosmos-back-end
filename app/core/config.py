@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     MAIL_SSL: bool = False
     
     RESEND_API_KEY: str
+    RESEND_API_FROM: str
     
     # --- Intégrations Tierces ---
     STRIPE_SECRET_KEY: str
