@@ -1,5 +1,7 @@
 import secrets
 import logging
+from fastapi.responses import JSONResponse
+from jose import jwt, JWTError, ExpiredSignatureError
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import APIRouter, BackgroundTasks, Depends, Response, Request
@@ -48,68 +50,144 @@ async def login(body: LoginPayload, request: Request, response: Response, db: As
 
     access_token = jwt_service.create_access_token(
         user_id=admin.id,
-        email=admin.email,
-        secret_key=admin.client_secret
+        email=admin.email
     )
     
     refresh_token = jwt_service.create_refresh_token(
         user_id=admin.id, 
-        email=admin.email, 
+        email=admin.email,
+        secret_key=admin.client_secret,
         remember=body.remember_me if body.remember_me else False
     )
     
-    # Configuration du Cookie
+    response = JSONResponse(
+        content={
+            "status_code": 200,
+            "success": True,
+            "message": "Connexion réussie",
+            "data": {
+                "access_token": access_token,
+                "token_type": "bearer"
+            }
+        }
+    )
+    
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=settings.ENV == 'production',
-        samesite="none",
+        secure=settings.ENV == "production",
+        samesite="lax" if settings.ENV == "development" else "none",
         max_age=7 * 24 * 60 * 60 if body.remember_me else 24 * 60 * 60,
+        path="/"
     )
-
-    return {
-        "status_code": 200,
-        "success": True,
-        "message": "Connexion réussie",
-        "data": {
-            "access_token": access_token,
-            "token_type": "bearer"
-        }
-    }
+    
+    return response
 
 
 @router.post("/logout")
 async def logout(request: Request, response: Response, db: AsyncSession = Depends(get_db)):
-    admin_repo = AdminRepository(db)
     token_repo = TokenRepository(db)
     token_service = TokenService(token_repo)
-    
-    refresh_token = request.cookies.get("refresh_token")
-    if not refresh_token:
-        return ServiceResponse.error("Refresh token manquant", 401)
-    
-    refresh_payload = jwt_service.decode_token(refresh_token)
-    if not refresh_payload or refresh_payload.get("type") != "refresh":
-        response.delete_cookie("refresh_token", path="/")
-        return ServiceResponse.error("Token invalide", 401)
-    
-    try:
-        user_id = int(refresh_payload.get("sub"))
-        expire_at = datetime.fromtimestamp(refresh_payload.get("exp"), tz=timezone.utc)
-        
-        if settings.ENV == "production":
-            await token_service.revoque_token(
-                user_id=user_id,
-                token=refresh_token,
-                token_type="refresh",
-                exp=expire_at
-            )
-    except Exception as e:
-        logger.error(f"Erreur lors du logout : {e}")
+    admin_repo = AdminRepository(db)
 
-    response.delete_cookie("refresh_token", path="/")
-    return {"success": True, "status_code": 200, "message": "Déconnexion réussie"}
+    def clear_cookie():
+        response.delete_cookie(
+            key="refresh_token",
+            path="/",
+            httponly=True,
+            samesite="lax" if settings.ENV == "development" else "none",
+        )
+
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        clear_cookie()
+        return ServiceResponse.error("Missing access token", 401)
+
+    access_token = auth_header.split(" ")[1]
+
+    access_payload = None
+
+    try:
+        access_payload = jwt.decode(
+            access_token,
+            settings.JWT_SECRET_KEY,
+            algorithms=["HS256"]
+        )
+    except (ExpiredSignatureError, JWTError):
+        access_payload = None
+
+    if access_payload and access_payload.get("type") == "access":
+        exp = datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
+
+        await token_service.revoke_token(
+            user_id=int(access_payload["sub"]),
+            token=access_token,
+            token_type="access",
+            exp=exp
+        )
+
+    refresh_token = request.cookies.get("refresh_token")
+
+    if not refresh_token:
+        clear_cookie()
+        return ServiceResponse.success(
+            message="Already logged out",
+            status_code=200
+        )
+
+    try:
+        refresh_payload = jwt.decode(
+            refresh_token,
+            settings.JWT_SECRET_KEY,
+            algorithms=["HS256"],
+            options={"verify_signature": False}
+        )
+    except Exception:
+        clear_cookie()
+        return ServiceResponse.success("Logged out")
+
+    if refresh_payload.get("type") != "refresh":
+        clear_cookie()
+        return ServiceResponse.error("Invalid token type", 401)
+
+    user_id = int(refresh_payload.get("sub"))
+    exp = datetime.fromtimestamp(refresh_payload.get("exp"), tz=timezone.utc)
+
+    user = await admin_repo.get_by_id(user_id)
+
+    if not user:
+        clear_cookie()
+        return ServiceResponse.success("Logged out")
+
+    try:
+        jwt.decode(
+            refresh_token,
+            user.client_secret,
+            algorithms=["HS256"]
+        )
+    except (JWTError, ExpiredSignatureError):
+        clear_cookie()
+        return ServiceResponse.success("Logged out")
+
+    is_revoked = await token_service.is_token_revoked(refresh_token)
+
+    if not is_revoked:
+        await token_service.revoke_token(
+            user_id=user.id,
+            token=refresh_token,
+            token_type="refresh",
+            exp=exp
+        )
+
+    clear_cookie()
+
+    return {
+        "success": True,
+        "status_code": 200,
+        "message": "Logout successful"
+    }
 
 
 @router.post("/refresh-token")
@@ -117,47 +195,111 @@ async def refresh_token_route(request: Request, response: Response, db: AsyncSes
     admin_repo = AdminRepository(db)
     token_repo = TokenRepository(db)
     token_service = TokenService(token_repo)
-    
-    refresh_token = request.cookies.get("refresh_token")
-    if not refresh_token:
-        return ServiceResponse.error("Refresh token manquant", 401)
-    
-    payload = jwt_service.decode_token(refresh_token)
-    if not payload or payload.get("type") != "refresh":
-        return ServiceResponse.error("Token invalide", 401)
 
-    user_id = int(payload.get("sub"))
-    expire_ts = payload.get("exp")
-    expire_dt = datetime.fromtimestamp(expire_ts, tz=timezone.utc)
-    
-    if expire_dt <= datetime.now(timezone.utc):
-        response.delete_cookie("refresh_token", path="/")
-        return ServiceResponse.error("Token expiré", 401)
-    
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header or not auth_header.startswith("Bearer "):
+        return ServiceResponse.error("Missing access token", 401)
+
+    access_token = auth_header.split(" ")[1]
+
+    access_payload = None
+    access_expired = False
+
+    try:
+        access_payload = jwt.decode(
+            access_token,
+            settings.JWT_SECRET_KEY,
+            algorithms=["HS256"]
+        )
+    except ExpiredSignatureError:
+        access_expired = True
+    except JWTError:
+        access_expired = True
+
+    if access_payload and not access_expired:
+        return ServiceResponse.success(
+            message="Access token still valid",
+            data={"access_token": access_token}
+        )
+
+    refresh_token = request.cookies.get("refresh_token")
+
+    if not refresh_token:
+        return ServiceResponse.error("Refresh token missing", 401)
+
+    try:
+        refresh_payload = jwt.decode(
+            refresh_token,
+            settings.JWT_SECRET_KEY,
+            algorithms=["HS256"],
+            options={"verify_signature": False}
+        )
+    except Exception:
+        return ServiceResponse.error("Invalid refresh token", 401)
+
+    if refresh_payload.get("type") != "refresh":
+        return ServiceResponse.error("Invalid token type", 401)
+
+    user_id = int(refresh_payload.get("sub"))
+
     user = await admin_repo.get_by_id(user_id)
+
     if not user:
-        return ServiceResponse.error("Utilisateur non trouvé", 404)
-        
-    # Création des nouveaux tokens
-    new_access = jwt_service.create_access_token(user_id=user.id, email=user.email, secret_key=user.client_secret)
-    new_refresh = jwt_service.create_new_refresh_token(user_id=user.id, email=user.email, expire=expire_dt)
-    
-    max_age = int((expire_dt - datetime.now(timezone.utc)).total_seconds())
-    
+        return ServiceResponse.error("User not found", 404)
+
+    try:
+        refresh_payload = jwt.decode(
+            refresh_token,
+            user.client_secret,
+            algorithms=["HS256"]
+        )
+    except ExpiredSignatureError:
+        return ServiceResponse.error("Session expired (refresh token)", 401)
+    except JWTError:
+        return ServiceResponse.error("Invalid refresh token", 401)
+
+    is_revoked = await token_service.is_token_revoked(refresh_token)
+    if is_revoked:
+        response.delete_cookie("refresh_token", path="/")
+        return ServiceResponse.error("Session revoked", 401)
+
+    new_access = jwt_service.create_access_token(
+        user_id=user.id,
+        email=user.email
+    )
+
+    new_refresh = jwt_service.create_refresh_token(
+        user_id=user.id,
+        email=user.email,
+        secret_key=user.client_secret,
+        remember=False
+    )
+
+    await token_service.revoke_token(
+        user_id=user.id,
+        token=refresh_token,
+        token_type="refresh",
+        exp=datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
+    )
+
     response.set_cookie(
         key="refresh_token",
         value=new_refresh,
         httponly=True,
-        secure=settings.ENV == 'production',
-        samesite="lax",
-        max_age=max_age,
+        secure=settings.ENV == "production",
+        samesite="lax" if settings.ENV == "development" else "none",
+        max_age=datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc),
         path="/"
     )
 
     return {
         "success": True,
-        "message": "Token actualisé",
-        "data": {"access_token": new_access, "token_type": "bearer"}
+        "message": "Token refreshed",
+        "data": {
+            "access_token": new_access,
+            "token_type": "bearer"
+        }
     }
 
 

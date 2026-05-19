@@ -1,10 +1,14 @@
+from jose import jwt, JWTError, ExpiredSignatureError
 from fastapi import Request
-from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
-from app.services.response_service import ServiceResponse
+from fastapi.responses import JSONResponse
+
 from app.repositories.admin_repository import AdminRepository
+from app.repositories.token_repository import TokenRepository
 from app.database.session import SessionLocal
 from app.services.utility_service import JWTService
+from app.services.token_service import TokenService
+
 
 class AuthMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, public_paths: list[str] = None):
@@ -13,82 +17,92 @@ class AuthMiddleware(BaseHTTPMiddleware):
         self.public_paths = public_paths or []
 
     async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-        refresh_token = request.cookies.get("refresh_token")
 
-        # On laisse passer les requêtes de pré-vérification CORS sans poser de questions
+        path = request.url.path
+
         if request.method == "OPTIONS":
             return await call_next(request)
 
-        # Si le chemin est public, on ne dérange pas l'utilisateur avec l'auth
-        if path in self.public_paths:
-            return await call_next(request)
-
-        # On évite de bloquer la documentation API (Swagger/Redoc)
-        if path.startswith(("/docs", "/redoc", "/openapi.json", "/api/v1/health")):
+        if path in self.public_paths or path.startswith(("/docs", "/redoc", "/openapi.json")):
             return await call_next(request)
 
         auth_header = request.headers.get("Authorization")
-
-        # Pas de badge, pas de chocolat : on vérifie la présence du header Authorization
         if not auth_header:
-            return ServiceResponse.error(
-                message="Le header d'autorisation est manquant.",
-                status_code=401
-            )
+            return self._error("Missing Authorization header")
 
-        # On s'assure que le format est bien "Bearer <token>"
         if not auth_header.startswith("Bearer "):
-            return ServiceResponse.error(
-                message="Le format du jeton d'authentification est invalide (doit être Bearer).",
-                status_code=401
-            )
+            return self._error("Invalid Bearer format")
 
         token = auth_header.split(" ")[1]
 
-        # On tente de décoder le refresh token pour identifier qui frappe à la porte
-        refresh_payload = self.jwt_service.decode_token(token=refresh_token)
-        
-        if not refresh_payload:
-            return ServiceResponse.error(
-                message="Votre session a expiré ou le jeton est invalide. Veuillez vous reconnecter.",
-                status_code=401
+        try:
+            payload = jwt.decode(
+                token,
+                self.jwt_service.secret_key,
+                algorithms=[self.jwt_service.algorithm]
             )
 
-        user_id = refresh_payload.get("sub")
+        except ExpiredSignatureError:
+            return self._error("Access token expired", 401)
 
-        async with SessionLocal() as db:
-            try:
+        except JWTError:
+            return self._error("Invalid access token", 401)
+
+        if payload.get("type") != "access":
+            return self._error("Invalid token type", 401)
+
+        user_id = int(payload.get("sub"))
+
+        try:
+            async with SessionLocal() as db:
                 user_repo = AdminRepository(db)
-                user_id_int = int(user_id)
-                
-                user = await user_repo.get_by_id(user_id_int)
+                token_repo = TokenRepository(db)
+                token_service = TokenService(token_repo)
+
+                user = await user_repo.get_by_id(user_id)
 
                 if not user:
-                    return self._abort("Administrateur introuvable.", 401, request)
+                    return self._error("User not found", 401)
 
-                verified_payload = self.jwt_service.decode_token(
-                    token,
-                    secret_key=user.client_secret
-                )
+                is_revoked = await token_service.is_token_revoked(token)
+                if is_revoked:
+                    return self._error("Token revoked", 401)
 
-                if not verified_payload:
-                    return self._abort("Jeton d'accès invalide ou expiré.", 401, request)
+                refresh_token = request.cookies.get("refresh_token")
 
-                request.state.user = verified_payload
-                
-            except Exception as e:
-                return self._abort("Erreur interne d'authentification.", 500, request)
+                if not refresh_token:
+                    return self._error("Missing refresh token")
+
+                try:
+                    refresh_payload = jwt.decode(
+                        refresh_token,
+                        user.client_secret,
+                        algorithms=[self.jwt_service.algorithm]
+                    )
+
+                    if refresh_payload.get("type") != "refresh":
+                        return self._error("Invalid refresh token type")
+
+                    is_refresh_revoked = await token_service.is_token_revoked(refresh_token)
+                    if is_refresh_revoked:
+                        return self._error("Refresh token revoked")
+
+                except JWTError:
+                    return self._error("Invalid refresh token")
+
+                request.state.user = payload
+                request.state.user_id = user.id
+
+        except Exception:
+            return self._error("Authentication error", 500)
 
         return await call_next(request)
 
-    def _abort(self, message: str, status_code: int, request: Request):
-        response = JSONResponse(
-            content={"success": False, "message": message},
-            status_code=status_code
+    def _error(self, message: str, status_code: int = 401):
+        return JSONResponse(
+            status_code=status_code,
+            content={
+                "success": False,
+                "message": message
+            }
         )
-        origin = request.headers.get("Origin")
-        if origin:
-            response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Credentials"] = "true"
-        return response

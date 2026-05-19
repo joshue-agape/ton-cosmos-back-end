@@ -8,7 +8,7 @@ class TokenService:
         self.repo = repo
 
 
-    async def revoque_token(self, user_id: int, token: str, token_type: str, exp: datetime) -> Token:
+    async def revoke_token(self, user_id: int, token: str, token_type: str, exp: datetime) -> Token:
         if exp.tzinfo is None:
             exp = exp.replace(tzinfo=timezone.utc)
 

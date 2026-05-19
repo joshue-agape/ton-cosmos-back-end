@@ -7,7 +7,10 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - .:/app
+      - reports_data:/app/static/reports
     env_file:
       - .env
     restart: always
+
+volumes:
+  reports_data:

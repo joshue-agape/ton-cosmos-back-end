@@ -26,8 +26,7 @@ class JWTService:
 
 
     # ACCESS TOKEN (15 min)
-    def create_access_token(self, user_id: int, email: str, secret_key: Optional[str] = None) -> str:
-        key = secret_key or self.secret_key
+    def create_access_token(self, user_id: int, email: str) -> str:
         expire = datetime.now(timezone.utc) + timedelta(minutes=15)
 
         payload = {
@@ -37,11 +36,11 @@ class JWTService:
             "exp": expire
         }
 
-        return jwt.encode(payload, key, algorithm=self.algorithm)
+        return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
     
     
     # REFRESH TOKEN
-    def create_refresh_token(self, user_id: int, email: str, remember: bool = False) -> str:
+    def create_refresh_token(self, user_id: int, email: str, secret_key: str, remember: bool = False) -> str:
         days = 7 if remember else 1
         expire = datetime.now(timezone.utc) + timedelta(days=days)
 
@@ -52,11 +51,11 @@ class JWTService:
             "exp": expire
         }
 
-        return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
+        return jwt.encode(payload, secret_key, algorithm=self.algorithm)
 
 
     # NEW REFRESH TOKEN
-    def create_new_refresh_token(self, user_id: int, email: str, expire: datetime) -> str:
+    def create_new_refresh_token(self, user_id: int, email: str, secret_key: str, expire: datetime) -> str:
         if expire.tzinfo is None:
             expire = expire.replace(tzinfo=timezone.utc)
 
@@ -68,7 +67,7 @@ class JWTService:
             "iat": datetime.now(timezone.utc)
         }
 
-        return jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
+        return jwt.encode(payload, secret_key, algorithm=self.algorithm)
     
 
     # DECODE TOKEN
