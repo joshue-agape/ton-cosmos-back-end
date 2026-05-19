@@ -1,4 +1,6 @@
 docker-compose.yml
+Dockerfile
+
 app/main.py
 app/templates/reports_pdf/premium_report.html
 app/services/pdf_service.py

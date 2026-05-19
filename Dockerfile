@@ -27,6 +27,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copier le projet
 COPY . .
 
+RUN mkdir -p /app/static/reports
+
 # Exposer le port
 EXPOSE 8000
 

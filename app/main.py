@@ -1,3 +1,4 @@
+import os
 import secrets
 from contextlib import asynccontextmanager
 
@@ -27,6 +28,15 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url=None,
     redoc_url=None
+)
+
+REPORTS_DIR = "/app/static/reports"
+os.makedirs(REPORTS_DIR, exist_ok=True)
+
+app.mount(
+    "/reports",
+    StaticFiles(directory=REPORTS_DIR),
+    name="reports"
 )
 
 app.add_middleware(
@@ -86,13 +96,6 @@ def get_current_username(credentials: HTTPBasicCredentials = Depends(security)):
             headers={"WWW-Authenticate": "Basic"},
         )
     return credentials.username
-
-
-app.mount(
-    "/reports",
-    StaticFiles(directory="/app/static/reports"),
-    name="reports"
-)
 
 
 @app.get("/docs", include_in_schema=False)
