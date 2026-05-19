@@ -38,6 +38,8 @@ class Settings(BaseSettings):
     MAIL_STARTTLS: bool = True
     MAIL_SSL: bool = False
     
+    RESEND_API_KEY: str
+    
     # --- Intégrations Tierces ---
     STRIPE_SECRET_KEY: str
     STRIPE_WEBHOOK_SECRET: str
