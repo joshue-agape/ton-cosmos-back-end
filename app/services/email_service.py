@@ -30,7 +30,7 @@ class EmailService:
 
     async def _send_via_resend(self, to: str, subject: str, html_content: str, attachment_path: Optional[str]) -> bool:
         params = {
-            "from": f"{settings.MAIL_FROM_NAME} <{settings.MAIL_FROM}>",
+            "from": "Ton Cosmos <onboarding@resend.dev>",
             "to": [to],
             "subject": subject,
             "html": html_content,
@@ -46,6 +46,7 @@ class EmailService:
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, lambda: resend.Emails.send(params))
         return True
+
 
     async def _send_via_smtp(self, to: str, subject: str, html_content: str, attachment_path: Optional[str]):
         message = EmailMessage()
@@ -75,6 +76,7 @@ class EmailService:
             start_tls=settings.MAIL_STARTTLS,
             use_tls=settings.MAIL_SSL,
         )
+
 
     async def send_email(
         self, 
