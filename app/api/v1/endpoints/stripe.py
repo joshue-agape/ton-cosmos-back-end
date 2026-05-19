@@ -159,6 +159,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                 logger.error(f"Order {order_id} not found")
                 return
 
+            # éviter double traitement Stripe
             if not resend and stripe_session_id:
                 existing = await order_repo.get_by_stripe_session(stripe_session_id)
                 if existing and existing.status == OrderStatus.COMPLETED:
@@ -176,6 +177,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
             await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.PROCESSING})
             await manager.send_update(socket_session_id, {"step": 1, "status": True})
 
+            # REPORT
             report = await report_repo.get_by_order_id(order_id)
             if not report:
                 report = await report_repo.create(
@@ -183,7 +185,9 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                 )
                 await db.commit()
 
+            # CHART
             chart = report.astral_data_json
+
             if not chart:
                 birth_dt = order.birth_date.replace(tzinfo=None)
                 if order.birth_time:
@@ -194,6 +198,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                     lat=order.latitude,
                     lon=order.longitude
                 )
+
                 await report_repo.update_astral_data_json(report.id, chart)
                 await db.commit()
 
@@ -202,8 +207,10 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
             # SVG
             svg_map = await ai_service.GenerateSVGMap(chart)
 
+            # AI CONTENT
             ai_content = report.ai_content_json
-            if not ai_content or not ai_content.get("sections"):
+
+            if not ai_content:
                 sections = [
                     "introduction", "piliers", "mental", "dominantes",
                     "maisons_vie_1", "maisons_vie_2",
@@ -220,11 +227,13 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                     for _ in range(15):
                         async with semaphore:
                             try:
+                                print("Analyse IA pour = ", section_id)
                                 return await ai_service.generate_astrology_report(
                                     chart, order.full_name, section_id
                                 )
                             except Exception as e:
                                 if "429" in str(e):
+                                    print("Pause 5 minutes")
                                     await asyncio.sleep(5)
                                     continue
                                 return None
@@ -239,8 +248,8 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
 
             await manager.send_update(socket_session_id, {"step": 3, "status": True})
 
+            # PDF
             pdf_url = report.pdf_url
-            output_filename = report.pdf_filename
 
             if not pdf_url:
                 safe_name = order.full_name.replace(" ", "-") if order.full_name else "user"
@@ -254,8 +263,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                         "birth_chart": chart.get("birth_chart", {}),
                         "ai_content": ai_content,
                         "birth_date_info": f"{order.birth_date} {order.birth_time}",
-                        "forecast": chart.get("forecast", {}),
-                        "current_date": datetime.now().strftime("%d %B %Y")
+                        "forecast": chart.get("forecast", {})
                     },
                     output_filename=output_filename
                 )
@@ -266,6 +274,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
 
             await manager.send_update(socket_session_id, {"step": 4, "status": True})
 
+            # EMAIL
             file_path = pdf_url.replace("/reports/", "/app/static/reports/")
 
             email_result = await email_service.send_email(
@@ -280,13 +289,14 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
             )
 
             if not email_result.get("success"):
-                raise Exception(f"Email delivery failed: {email_result.get('message')}")
+                raise Exception(email_result.get("message"))
 
             await order_repo.update_status(order.id, OrderStatus.COMPLETED)
-            await db.commit()
 
             await manager.send_update(socket_session_id, {"step": 5, "status": True})
             await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.COMPLETED})
+
+            await db.commit()
 
         except Exception as e:
             try:

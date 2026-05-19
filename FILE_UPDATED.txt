@@ -3,7 +3,9 @@ Dockerfile
 
 app/main.py
 app/templates/reports_pdf/premium_report.html
+app/services/claude_service.py
 app/services/pdf_service.py
+app/services/email_service.py
 app/services/token_service.py
 app/services/utility_service.py
 app/middleware/auth_middleware.py

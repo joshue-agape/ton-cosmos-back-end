@@ -39,15 +39,20 @@ class AIService:
         
     async def GenerateSVGMap(self, chart: dict): 
         prompt = f"""
-        Génère le code SVG d'une carte du ciel.
-        DONNÉES : {chart}
-        
-        RÈGLES CRITIQUES :
-        - RÉPOND UNIQUEMENT AVEC LE CODE SVG. 
-        - PAS DE TEXTE AVANT. 
-        - PAS DE TEXTE APRÈS.
-        - PAS DE BLOC DE CODE MARKDOWN (PAS DE ```).
-        - Dimensions : viewBox="0 0 500 500".
+        Génère le code source SVG d'une carte du ciel astrologique complète, haut de gamme et purement graphique, idéale pour une couverture de livre.
+
+        DONNÉES ASTRALES À REPRÉSENTER : {chart}
+
+        RÈGLES DE DESIGN ET CONTENU :
+        1. SYMBOLES ET COORDONNÉES INCLUS : Intègre obligatoirement dans le graphique les symboles (glyphes vectoriels) des planètes, les symboles des signes du zodiaque, ainsi que les lignes de coordonnées géométriques (les rayons des maisons et les cercles de degrés).
+        2. ZÉRO LÉGENDE TEXTUELLE : N'écris AUCUN texte explicatif, AUCUN nom de planète en toutes lettres (pas de "Mars", "Jupiter"), et AUCUN tableau de données. Tout doit être communiqué uniquement par les symboles et le graphisme à l'intérieur de la carte.
+        3. ESTHÉTIQUE COUVERTURE : Le style doit être épuré, mystique et professionnel. Les lignes doivent être très fines (stroke-width="1" ou "1.2"). Assure-toi que les symboles soient bien positionnés et lisibles.
+
+        RÈGLES TECHNIQUES CRITIQUES :
+        - Réponds UNIQUEMENT avec le code source SVG brut, sans aucun commentaire (ni HTML, ni XML) à l'intérieur.
+        - PAS DE BLABLA, pas de politesse, pas d'explications avant ou après.
+        - INTERDICTION ABSOLUE d'utiliser des blocs de code Markdown (PAS de ```svg, PAS de ```xml, PAS de ```). Commence directement par <svg> et finis par </svg>.
+        - Dimensions : viewBox="0 0 500 500" avec width="100%" height="100%".
         """
         
         raw_content = ""
