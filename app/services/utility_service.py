@@ -63,8 +63,8 @@ class JWTService:
             "sub": str(user_id),
             "email": email,
             "type": "refresh",
-            "exp": expire,
-            "iat": datetime.now(timezone.utc)
+            "exp": int(expire.timestamp()),
+            "iat": int(datetime.now(timezone.utc).timestamp())
         }
 
         return jwt.encode(payload, secret_key, algorithm=self.algorithm)

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, JSON, Text
+from sqlalchemy import Column, Float, Integer, String, DateTime, ForeignKey, JSON, Text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.base import Base
@@ -19,7 +19,7 @@ class AstrologicalReport(Base):
     pdf_name = Column(String(255), nullable=True)
     
     # Monitoring performance
-    generation_duration = Column(Integer, nullable=False, default=0)
+    generation_duration = Column(Float, nullable=False, default=0)
     error_log = Column(Text, nullable=True)
 
     created_at = Column(DateTime(timezone=True), server_default=func.now())

@@ -63,3 +63,11 @@ class AdminRepository:
             admin.reset_password_token_expires_at = None
             await self.db.commit()
             
+    async def update_email(self, admin_id: int, new_email: str) -> None:
+        admin = await self.get_by_id(admin_id)
+        if admin:
+            admin.email = new_email
+            await self.db.commit()
+            
+            await self.db.commit()
+            

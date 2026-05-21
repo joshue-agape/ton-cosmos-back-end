@@ -12,34 +12,11 @@ class AIService:
         self.client = anthropic.AsyncAnthropic(
             api_key=settings.ANTHROPIC_API_KEY
         )
-        
-    
-    async def test_claude_connection(self) -> Dict[str, Any]:
-        try:
-            response = await self.client.messages.create(
-                model="claude-opus-4-6",
-                max_tokens=200,
-                temperature=0,
-                system="Réponds uniquement par un JSON valide.",
-                messages=[{"role": "user", "content": "Génère un petit JSON de test."}]
-            )
-            
-            raw_content = response.content[0].text.strip()
-            
-            # Nettoyage du Markdown JSON
-            if raw_content.startswith("```"):
-                raw_content = raw_content.strip("```json").strip("```").strip()
-            
-            return json.loads(raw_content)
-            
-        except Exception as e:
-            logger.error(f"Échec du test de connexion Claude : {e}")
-            return {"error": str(e), "integration_status": "failed"}
 
         
     async def GenerateSVGMap(self, chart: dict): 
         prompt = f"""
-        Génère le code source SVG d'une carte du ciel astrologique complète et ultra-optimisée pour une couverture de livre.
+        Génère le code source SVG d'une carte du ciel astrologique minimaliste mais optimisée pour une couverture de livre.
 
         DONNÉES ASTRALES À REPRÉSENTER : {chart}
 
@@ -57,6 +34,8 @@ class AIService:
         - Réponds UNIQUEMENT avec le code source SVG brut, sans blabla ni explications avant/après.
         - INTERDICTION ABSOLUE d'utiliser les blocs Markdown (PAS de ```svg ou ```). Commence directement par <svg> et finis par </svg>.
         - Dimensions : viewBox="0 0 500 500" width="100%" height="100%".
+        
+        IMPORTANT : Ton quota est de 5000 tokens, mais tu dois rester concis et structuré pour ne jamais tronquer la fermeture du SVG. Finis impérativement par '</svg>'.
         """
         
         raw_content = ""
@@ -124,7 +103,7 @@ class AIService:
         4. N'utilise pas de caractères spéciaux non standards ou de guillemets doubles (") à l'intérieur de tes textes (utilise des guillemets simples ' à la place).
 
         ### FORMAT DE SORTIE : 
-        - Retourne UNIQUEMENT du JSON pur. 
+        - Retourne UNIQUEMENT du JSON pur, pas de bonjour, pas de blablabla. 
         - Pas de balises markdown (pas de ```json).
         - Pas de texte avant ou après le bloc JSON.
 

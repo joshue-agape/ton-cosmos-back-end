@@ -21,7 +21,6 @@ from app.services.response_service import ServiceResponse
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Initialisation des services
 service = UtilsService()
 jwt_service = JWTService()
 email_service = EmailService()
@@ -39,6 +38,7 @@ async def login(body: LoginPayload, request: Request, response: Response, db: As
         return ServiceResponse.error(message="Email invalide", status_code=401, data={"error": "email"})
         
     if not password_service.verify_password(body.password, admin.hashed_password):
+        admin_repo.increment_failed_attempts(body.email)
         return ServiceResponse.error(message="Mot de passe incorrect", status_code=401, data={"error": "password"})
     
     # Mise à jour des stats de login
@@ -269,11 +269,11 @@ async def refresh_token_route(request: Request, response: Response, db: AsyncSes
         email=user.email
     )
 
-    new_refresh = jwt_service.create_refresh_token(
+    new_refresh = jwt_service.create_new_refresh_token(
         user_id=user.id,
         email=user.email,
         secret_key=user.client_secret,
-        remember=False
+        expire=datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
     )
 
     await token_service.revoke_token(
@@ -282,6 +282,9 @@ async def refresh_token_route(request: Request, response: Response, db: AsyncSes
         token_type="refresh",
         exp=datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
     )
+    
+    expire_dt = datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
+    max_age = int((expire_dt - datetime.now(timezone.utc)).total_seconds())
 
     response.set_cookie(
         key="refresh_token",
@@ -289,7 +292,8 @@ async def refresh_token_route(request: Request, response: Response, db: AsyncSes
         httponly=True,
         secure=settings.ENV == "production",
         samesite="lax" if settings.ENV == "development" else "none",
-        max_age=datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc),
+        max_age=max_age,
+        expires=expire_dt,
         path="/"
     )
 
@@ -381,22 +385,7 @@ async def reset_password_finish(body: ResetPayload, db: AsyncSession = Depends(g
 @router.patch("/update-password")
 async def update_password(body: UpdatePasswordPayload, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     admin_repo = AdminRepository(db)
-    
-    refresh_token = request.cookies.get("refresh_token")
-    if not refresh_token:
-        return ServiceResponse.error("Non autorisé", 401)
-    
-    payload = jwt_service.decode_token(refresh_token)
-    if not payload or payload.get("type") != "refresh":
-        return ServiceResponse.error("Session invalide", 401)
-
-    user_id = int(payload.get("sub"))
-    expire_ts = payload.get("exp")
-    expire_dt = datetime.fromtimestamp(expire_ts, tz=timezone.utc)
-    
-    if expire_dt <= datetime.now(timezone.utc):
-        response.delete_cookie("refresh_token", path="/")
-        return ServiceResponse.error("Token expiré", 401)
+    user_id = request.state.user_id
     
     admin = await admin_repo.get_by_id(user_id)
 
@@ -410,3 +399,39 @@ async def update_password(body: UpdatePasswordPayload, request: Request, respons
     await admin_repo.update_password(admin_id=admin.id, new_hashed_password=new_hashed)
     
     return ServiceResponse.success("Mot de passe mis à jour avec succès.")
+
+
+@router.get("/data")
+async def get_admin_data(request: Request, db: AsyncSession = Depends(get_db)):
+    admin_repo = AdminRepository(db)
+    user_id = request.state.user_id
+    admin = await admin_repo.get_by_id(user_id)
+    if not admin:
+        return ServiceResponse.error("Admin non trouvé", 404)
+    
+    return ServiceResponse.success(
+        message="Données sensibles accessibles uniquement aux admins authentifiés.", 
+        data={
+            "email": admin.email,
+            "last_device_logged": admin.last_device_logged,
+            "last_ip_logged": admin.last_ip_logged,
+            "updated_at": admin.updated_at
+        }
+    )
+    
+    
+@router.put("/update-data")
+async def update_admin_email(body: ForgotPayload, request: Request, db: AsyncSession = Depends(get_db)):
+    admin_repo = AdminRepository(db)
+    user_id = request.state.user_id
+    admin = await admin_repo.get_by_id(user_id)
+    if not admin:
+        return ServiceResponse.error("Admin non trouvé", 404)
+    
+    await admin_repo.update_email(admin_id=admin.id, new_email=body.email)
+    
+    return ServiceResponse.success(
+        message="Email mis à jour pour l'admin connecté.",
+        data={"new_email": body.email}
+    )
+    

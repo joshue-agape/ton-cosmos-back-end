@@ -233,7 +233,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                                 )
                             except Exception as e:
                                 if "429" in str(e):
-                                    print("Pause 5 minutes")
+                                    print("Pause 5 secondes pour éviter le rate limit...")
                                     await asyncio.sleep(5)
                                     continue
                                 return None

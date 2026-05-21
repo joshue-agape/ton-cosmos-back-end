@@ -42,61 +42,84 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 algorithms=[self.jwt_service.algorithm]
             )
 
-        except ExpiredSignatureError:
-            return self._error("Access token expired", 401)
+            if payload.get("type") != "access":
+                return self._error("Invalid token type")
 
-        except JWTError:
-            return self._error("Invalid access token", 401)
+            user_id = int(payload.get("sub"))
 
-        if payload.get("type") != "access":
-            return self._error("Invalid token type", 401)
-
-        user_id = int(payload.get("sub"))
-
-        try:
             async with SessionLocal() as db:
                 user_repo = AdminRepository(db)
                 token_repo = TokenRepository(db)
                 token_service = TokenService(token_repo)
 
                 user = await user_repo.get_by_id(user_id)
-
                 if not user:
-                    return self._error("User not found", 401)
+                    return self._error("User not found")
 
-                is_revoked = await token_service.is_token_revoked(token)
-                if is_revoked:
-                    return self._error("Token revoked", 401)
-
-                refresh_token = request.cookies.get("refresh_token")
-
-                if not refresh_token:
-                    return self._error("Missing refresh token")
-
-                try:
-                    refresh_payload = jwt.decode(
-                        refresh_token,
-                        user.client_secret,
-                        algorithms=[self.jwt_service.algorithm]
-                    )
-
-                    if refresh_payload.get("type") != "refresh":
-                        return self._error("Invalid refresh token type")
-
-                    is_refresh_revoked = await token_service.is_token_revoked(refresh_token)
-                    if is_refresh_revoked:
-                        return self._error("Refresh token revoked")
-
-                except JWTError:
-                    return self._error("Invalid refresh token")
+                if await token_service.is_token_revoked(token):
+                    return self._error("Token revoked")
 
                 request.state.user = payload
                 request.state.user_id = user.id
 
-        except Exception:
-            return self._error("Authentication error", 500)
+            return await call_next(request)
 
-        return await call_next(request)
+        except ExpiredSignatureError:
+            try:
+                payload = jwt.decode(
+                    token,
+                    self.jwt_service.secret_key,
+                    algorithms=[self.jwt_service.algorithm],
+                    options={"verify_exp": False}
+                )
+
+                if payload.get("type") != "access":
+                    return self._error("Invalid token type")
+
+                user_id = int(payload.get("sub"))
+
+                async with SessionLocal() as db:
+                    user_repo = AdminRepository(db)
+                    token_repo = TokenRepository(db)
+                    token_service = TokenService(token_repo)
+
+                    user = await user_repo.get_by_id(user_id)
+                    if not user:
+                        return self._error("User not found")
+
+                    if await token_service.is_token_revoked(token):
+                        return self._error("Token revoked")
+
+                    refresh_token = request.cookies.get("refresh_token")
+                    if not refresh_token:
+                        return self._error("Missing refresh token")
+
+                    try:
+                        refresh_payload = jwt.decode(
+                            refresh_token,
+                            user.client_secret,
+                            algorithms=[self.jwt_service.algorithm]
+                        )
+
+                        if refresh_payload.get("type") != "refresh":
+                            return self._error("Invalid refresh token type")
+
+                        if await token_service.is_token_revoked(refresh_token):
+                            return self._error("Refresh token revoked")
+
+                    except JWTError:
+                        return self._error("Invalid refresh token")
+
+                    request.state.user = payload
+                    request.state.user_id = user.id
+
+                return await call_next(request)
+
+            except JWTError:
+                return self._error("Invalid expired token")
+
+        except JWTError:
+            return self._error("Invalid access token")
 
     def _error(self, message: str, status_code: int = 401):
         return JSONResponse(
@@ -106,3 +129,4 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 "message": message
             }
         )
+        
