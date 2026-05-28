@@ -165,7 +165,8 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                 if existing and existing.status == OrderStatus.COMPLETED:
                     return
 
-            start_time = asyncio.get_event_loop().time()
+            loop = asyncio.get_running_loop()
+            start_time = loop.time()
 
             await order_repo.update_status(
                 order_id=order.id,
@@ -268,7 +269,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                     output_filename=output_filename
                 )
 
-                duration = round(asyncio.get_event_loop().time() - start_time, 2)
+                duration = round(loop.time() - start_time, 2)
                 await report_repo.finalize_pdf(report.id, pdf_url, output_filename, duration)
                 await db.commit()
 
