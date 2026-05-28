@@ -16,11 +16,9 @@ class StripeService:
     ) -> stripe.checkout.Session:
         
         if plan_type.lower() == "essentiel":
-            stripe_product_id = settings.STRIPE_PRICE_ID_ESSENTIAL
-            amount_cents = settings.STRIPE_PRICE_CENTS_ESSENTIAL
+            stripe_price_id = settings.STRIPE_PRICE_ID_ESSENTIAL
         elif plan_type.lower() == "complet":
-            stripe_product_id = settings.STRIPE_PRICE_ID_PREMIUM
-            amount_cents = settings.STRIPE_PRICE_CENTS_PREMIUM
+            stripe_price_id = settings.STRIPE_PRICE_ID_PREMIUM
         else:
             raise HTTPException(status_code=400, detail="Type de forfait invalide")
         
@@ -32,15 +30,11 @@ class StripeService:
                 metadata={
                     "plan_type": plan_type,
                     "order_id": str(order_id),
-                    "stripe_product_id": stripe_product_id
+                    "stripe_price_id": stripe_price_id
                 },
                 line_items=[
                     {
-                        "price_data": {
-                            "currency": "eur",
-                            "product": stripe_product_id,
-                            "unit_amount": amount_cents,
-                        },
+                        "price": stripe_price_id,
                         "quantity": 1,
                     }
                 ],

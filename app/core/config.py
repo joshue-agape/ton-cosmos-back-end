@@ -47,9 +47,6 @@ class Settings(BaseSettings):
     STRIPE_PRICE_ID_ESSENTIAL: str
     STRIPE_PRICE_ID_PREMIUM: str
     
-    STRIPE_PRICE_CENTS_ESSENTIAL: int
-    STRIPE_PRICE_CENTS_PREMIUM: int
-    
     ANTHROPIC_API_KEY: str
 
     # Configuration du chargement des variables d'environnement
