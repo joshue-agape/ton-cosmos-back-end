@@ -14,6 +14,16 @@ class StripeService:
         order_id: int, 
         user_email: str
     ) -> stripe.checkout.Session:
+        
+        if plan_type.lower() == "essentiel":
+            stripe_product_id = settings.STRIPE_PRICE_ID_ESSENTIAL
+            amount_cents = settings.STRIPE_PRICE_CENTS_ESSENTIAL
+        elif plan_type.lower() == "complet":
+            stripe_product_id = settings.STRIPE_PRICE_ID_PREMIUM
+            amount_cents = settings.STRIPE_PRICE_CENTS_PREMIUM
+        else:
+            raise HTTPException(status_code=400, detail="Type de forfait invalide")
+        
         try:
             session = stripe.checkout.Session.create(
                 mode="payment",
@@ -21,16 +31,15 @@ class StripeService:
                 customer_email=user_email,
                 metadata={
                     "plan_type": plan_type,
-                    "order_id": str(order_id)
+                    "order_id": str(order_id),
+                    "stripe_product_id": stripe_product_id
                 },
                 line_items=[
                     {
                         "price_data": {
                             "currency": "eur",
-                            "product_data": {
-                                "name": f"Rapport astrologique ({plan_type})",
-                            },
-                            "unit_amount": amount_total,
+                            "product": stripe_product_id,
+                            "unit_amount": amount_cents,
                         },
                         "quantity": 1,
                     }

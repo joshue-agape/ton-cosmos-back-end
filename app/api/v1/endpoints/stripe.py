@@ -39,7 +39,7 @@ astrology_service = AstrologyService()
 
 
 class OrderRequest(BaseModel):
-    plan_type: str
+    plan_type: str  # "essentiel" | "complet"
     order_id: int
     amount_total: int
     email: str

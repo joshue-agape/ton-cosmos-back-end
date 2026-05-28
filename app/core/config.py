@@ -44,6 +44,12 @@ class Settings(BaseSettings):
     # --- Intégrations Tierces ---
     STRIPE_SECRET_KEY: str
     STRIPE_WEBHOOK_SECRET: str
+    STRIPE_PRICE_ID_ESSENTIAL: str
+    STRIPE_PRICE_ID_PREMIUM: str
+    
+    STRIPE_PRICE_CENTS_ESSENTIAL: int
+    STRIPE_PRICE_CENTS_PREMIUM: int
+    
     ANTHROPIC_API_KEY: str
 
     # Configuration du chargement des variables d'environnement
