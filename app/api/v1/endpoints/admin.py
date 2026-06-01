@@ -1,5 +1,6 @@
 import secrets
 import logging
+from math import ceil
 from fastapi.responses import JSONResponse
 from jose import jwt, JWTError, ExpiredSignatureError
 from datetime import datetime, timedelta, timezone
@@ -26,19 +27,47 @@ jwt_service = JWTService()
 email_service = EmailService()
 password_service = PasswordService()
 
+MAX_FAILED_ATTEMPTS = 5
+LOCK_TIME_MINUTES = 15
 
 @router.post("/login")
 async def login(body: LoginPayload, request: Request, response: Response, db: AsyncSession = Depends(get_db)):
     admin_repo = AdminRepository(db)
     
     device = service.get_device(request=request)
+    current_ip = device.get("IP") or request.client.host
     admin = await admin_repo.get_by_email(body.email)
     
     if not admin:
         return ServiceResponse.error(message="Email invalide", status_code=401, data={"error": "email"})
+    
+    now = datetime.now(timezone.utc) if admin.locked_until and admin.locked_until.tzinfo else datetime.now()
+    if admin.locked_until and admin.locked_until > now:
+        remaining_time = ceil((admin.locked_until - now).total_seconds() / 60)
+        return ServiceResponse.error(
+            message=f"Compte temporairement bloqué (Origine: {admin.failed_attempts_ip}). Réessaie dans {remaining_time} minute(s).", 
+            status_code=423, 
+            data={"error": "locked"}
+        )
         
     if not password_service.verify_password(body.password, admin.hashed_password):
-        admin_repo.increment_failed_attempts(body.email)
+        await admin_repo.increment_failed_attempts(body.email)
+        current_attempts = admin.failed_attempts + 1
+        if current_attempts >= MAX_FAILED_ATTEMPTS:
+            lock_target = now + timedelta(minutes=LOCK_TIME_MINUTES)
+            
+            await admin_repo.lock_account(admin.id, lock_target, current_ip)
+            await db.commit()
+            
+            logger.warning(f"CRITICAL: Compte {body.email} BLOQUÉ pour {LOCK_TIME_MINUTES}min. Cause: 5 échecs depuis l'IP {current_ip}")
+            
+            return ServiceResponse.error(
+                message=f"Trop de tentatives. Compte bloqué pour {LOCK_TIME_MINUTES} minutes.", 
+                status_code=423, 
+                data={"error": "locked"}
+            )
+            
+        await db.commit()
         return ServiceResponse.error(message="Mot de passe incorrect", status_code=401, data={"error": "password"})
     
     # Mise à jour des stats de login
@@ -47,6 +76,7 @@ async def login(body: LoginPayload, request: Request, response: Response, db: As
         device=device.get("device"),
         ip=device.get("IP")
     )
+    await db.commit()
 
     access_token = jwt_service.create_access_token(
         user_id=admin.id,

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Optional, Any, Dict
 
 class ReportCreate(BaseModel):
@@ -8,5 +8,4 @@ class ReportCreate(BaseModel):
     astral_data_json: Dict[str, Any] = Field(default_factory=dict)
     ai_content_json: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

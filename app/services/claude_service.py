@@ -12,6 +12,7 @@ class AIService:
         self.client = anthropic.AsyncAnthropic(
             api_key=settings.ANTHROPIC_API_KEY
         )
+        self.model_name = "claude-sonnet-4-6"   # ou claude-opus-4-6
 
         
     async def GenerateSVGMap(self, chart: dict): 
@@ -42,7 +43,7 @@ class AIService:
         
         try:
             response = await self.client.messages.create(
-                model="claude-opus-4-6", 
+                model=self.model_name,
                 max_tokens=8000,
                 temperature=0,
                 system="Tu es Indira. Ton unique but est de générer du code SVG valide. Ne salue pas. Ne commente pas.",
@@ -72,7 +73,7 @@ class AIService:
             raise e
 
 
-    async def generate_astrology_report(self, chart: dict, full_name: str, section_key: str) -> Dict[str, Any]:
+    async def generate_astrology_report(self, chart: dict, full_name: str, section_key: str, max_retries: int = 3) -> Dict[str, Any]:
         section_prompts = {
             "introduction": "Voyage au cœur de ton ciel : Une introduction immersive à l'astrologie comme outil de connaissance de soi et le message d'Indira pour ton évolution.",
             "piliers": "Les Fondations de l'Être : Analyse psychologique croisée et approfondie de ton 'Big Three' (Soleil, Lune, Ascendant). Comment ton essence, tes besoins émotionnels et ton masque social s'unissent.",
@@ -102,66 +103,72 @@ class AIService:
         3. INTERDICTION FORMELLE d'utiliser des retours à la ligne réels (touches Entrée) à l'intérieur des valeurs de texte. Utilise exclusivement '\\n' pour simuler un saut de ligne si nécessaire.
         4. N'utilise pas de caractères spéciaux non standards ou de guillemets doubles (") à l'intérieur de tes textes (utilise des guillemets simples ' à la place).
 
-        ### FORMAT DE SORTIE : 
-        - Retourne UNIQUEMENT du JSON pur, pas de bonjour, pas de blablabla. 
-        - Pas de balises markdown (pas de ```json).
-        - Pas de texte avant ou après le bloc JSON.
-
-        ### STRUCTURE JSON :
-        {{
-            "id": "{section_key}",
-            "title": "Titre créatif court",
-            "blocks": [
-                {{ 
-                    "subtitle": "Sous-titre sans saut de ligne", 
-                    "paragraphs": [
-                        "Texte du premier paragraphe sans retour à la ligne réel.",
-                        "Texte du second paragraphe sans retour à la ligne réel."
-                    ],
-                    "note": "Note courte" ou Null,
-                    "conseil": "Conseil pratique" ou Null
-                }}
-            ],
-            "summary": "Conclusion synthétique"
-        }}
-
         IMPORTANT : Ton quota est de 5000 tokens, mais tu dois rester concis et structuré pour ne jamais tronquer la fermeture du JSON. Finis impérativement par '}}'.
         """
         
-        raw_content = ""
+        report_tool = {
+            "name": "submit_astrology_section",
+            "description": "Soumet la section rédigée du rapport astrologique sous un format structuré.",
+            "input_schema": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "description": f"Doit être exactement '{section_key}'"},
+                    "title": {"type": "string", "description": "Titre créatif court"},
+                    "blocks": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "subtitle": {"type": "string", "description": "Sous-titre du bloc"},
+                                "paragraphs": {
+                                    "type": "array",
+                                    "items": {"type": "string", "description": "Paragraphe de texte riche."}
+                                },
+                                "note": {"type": "string", "description": "Note de sagesse courte (optionnelle)"},
+                                "conseil": {"type": "string", "description": "Conseil pratique (optionnel)"}
+                            },
+                            "required": ["subtitle", "paragraphs"]
+                        }
+                    },
+                    "summary": {"type": "string", "description": "Conclusion synthétique de la section"}
+                },
+                "required": ["id", "title", "blocks", "summary"]
+            }
+        }
         
-        try:
-            response = await self.client.messages.create(
-                model="claude-opus-4-6", 
-                max_tokens=8000,
-                temperature=0.7,
-                system="Tu es Indira. Réponds uniquement en JSON pur. Ne parle pas, ne salue pas, envoie juste le code.",
-                messages=[{"role": "user", "content": prompt}]
-            )
-            
-            raw_content = response.content[0].text.strip()
-            
-            if "```" in raw_content:
-                raw_content = raw_content.split("```")[1]
-                if raw_content.startswith("json"):
-                    raw_content = raw_content[4:]
-                raw_content = raw_content.strip()
+        for attempt in range(max_retries + 1):
+            try:
+                response = await self.client.messages.create(
+                    model=self.model_name,
+                    max_tokens=8000,
+                    temperature=0.7,
+                    system="Tu es Indira. Tu rédiges des rapports de thèmes astraux profonds et tu appelles l'outil mis à ta disposition pour renvoyer ton travail.",
+                    tools=[report_tool],
+                    tool_choice={"type": "tool", "name": "submit_astrology_section"},
+                    messages=[{"role": "user", "content": prompt}]
+                )
 
-            if not raw_content.endswith("}"):
-                logger.warning(f"Réparation JSON pour {full_name}")
-                if not raw_content.endswith('"') and not raw_content.endswith(']'):
-                    raw_content += '"'
-                if raw_content.count('[') > raw_content.count(']'):
-                    raw_content += ']}'
-                if raw_content.count('{') > raw_content.count('}'):
-                    raw_content += '}'
+                tool_use = next((block for block in response.content if block.type == "tool_use"), None)
+                
+                if not tool_use:
+                    raise ValueError("Le modèle a contourné l'outil de structuration.")
 
-            return json.loads(raw_content)
+                result_json = tool_use.input
+                
+                if not result_json.get("blocks"):
+                    raise ValueError("La structure renvoyée ne contient aucun bloc de contenu.")
 
-        except json.JSONDecodeError as e:
-            logger.error(f"Erreur JSON : {raw_content[:200]}")
-            raise Exception("Format JSON invalide reçu de l'IA.")
-        except Exception as e:
-            logger.error(f"Erreur Claude : {e}")
-            raise e
+                for block in result_json["blocks"]:
+                    if "note" not in block:
+                        block["note"] = None
+                    if "conseil" not in block:
+                        block["conseil"] = None
+
+                return result_json
+
+            except Exception as e:
+                logger.warning(f"[Tentative {attempt + 1}/{max_retries + 1}] Erreur section {section_key} : {e}")
+                if attempt == max_retries:
+                    logger.error(f"Échec critique après {max_retries + 1} essais pour {section_key}.")
+                    raise Exception(f"Erreur de génération de la section {section_key} : {e}")
         

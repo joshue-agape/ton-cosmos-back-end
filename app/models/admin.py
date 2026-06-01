@@ -16,6 +16,9 @@ class Admin(Base):
     
     # Sécurité dashboard
     failed_login_attempts = Column(Integer, default=0, nullable=False)
+    locked_until = Column(DateTime(timezone=True), nullable=True)
+    failed_attempts_ip = Column(String(45), nullable=True)
+    
     last_device_logged = Column(String(255), nullable=True)
     last_ip_logged = Column(String(45), nullable=True)
 

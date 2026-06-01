@@ -47,6 +47,7 @@ Pygments==2.20.0
 pyphen==0.17.2
 pyswisseph==2.10.3.2
 pytest==9.0.3
+pytest-asyncio==1.4.0
 python-dotenv==1.2.2
 python-jose==3.5.0
 PyYAML==6.0.3

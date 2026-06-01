@@ -63,6 +63,7 @@ app.add_middleware(
     AuthMiddleware,
     public_paths=[
         "/",
+        "/reports",
         "/api/v1/admin/login",
         "/api/v1/admin/logout",
         "/api/v1/admin/refresh-token",

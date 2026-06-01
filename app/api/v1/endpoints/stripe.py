@@ -1,14 +1,19 @@
+import os
 import time
 import stripe
 import asyncio
 import logging
 import locale
+from sqlalchemy import update
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
+from concurrent.futures import ProcessPoolExecutor
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
 from pydantic import BaseModel
 
+from app.models.order import Order
 from app.database.deps import get_db
+from app.database.session import SessionLocal
 from app.core.config import settings
 from app.core.websocket_manager import manager
 from app.services.pdf_service import PDFService
@@ -24,6 +29,9 @@ from app.schemas.report import ReportCreate
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+MAX_CPU_WORKERS = max(2, os.cpu_count() or 2)
+pdf_pool_executor = ProcessPoolExecutor(max_workers=MAX_CPU_WORKERS)
 
 # Configuration Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
@@ -61,8 +69,8 @@ async def create_checkout(body: OrderRequest):
     except Exception as e:
         logger.error(f"Erreur Stripe Session: {e}")
         return ServiceResponse.error(message="Erreur lors de la création du paiement", status_code=500)
-   
-        
+
+
 @router.websocket("/ws/{session_id}")
 async def websocket_endpoint_for_check_steps(websocket: WebSocket, session_id: str):
     await manager.connect(session_id, websocket)
@@ -71,7 +79,7 @@ async def websocket_endpoint_for_check_steps(websocket: WebSocket, session_id: s
             await websocket.receive_text() 
     except WebSocketDisconnect:
         manager.disconnect(session_id, websocket)
-        
+
 
 @router.websocket("/order/ws/order-status-for-admin")
 async def websocket_endpoint_for_check_new_event(websocket: WebSocket):
@@ -83,7 +91,7 @@ async def websocket_endpoint_for_check_new_event(websocket: WebSocket):
     except WebSocketDisconnect:
         manager.disconnect(admin_socket_session, websocket)
 
-    
+
 @router.post("/webhook")
 async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
     payload = await request.body()
@@ -103,7 +111,7 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
         return {"status": "ignored"}
 
     session_obj = event["data"]["object"]
-    session = session_obj.to_dict() 
+    session = session_obj.to_dict() if hasattr(session_obj, "to_dict") else session_obj
     
     session_id = session.get("id")
     metadata = session.get("metadata", {})
@@ -145,8 +153,15 @@ async def resend_email(order_id: int, background_tasks: BackgroundTasks, db: Asy
     return ServiceResponse.success(message="Le processus de génération et d'envoi a été relancé.")
 
 
+def _heavy_pdf_generation_task(pdf_service_instance, template_name, data, output_filename):
+    return asyncio.run(pdf_service_instance.generate_astrological_report(
+        template_name=template_name,
+        data=data,
+        output_filename=output_filename
+    ))
+    
 async def process_order_pipeline(order_id: int, stripe_session_id: str | None = None, resend: bool = False):
-    async for db in get_db():
+    async with SessionLocal() as db:
         order_repo = OrderRepository(db)
         report_repo = ReportRepository(db)
 
@@ -174,6 +189,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                 stripe_session_id=stripe_session_id if not resend else None
             )
             await db.commit()
+            await db.refresh(order)
 
             await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.PROCESSING})
             await manager.send_update(socket_session_id, {"step": 1, "status": True})
@@ -225,25 +241,27 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                 semaphore = asyncio.Semaphore(5)
 
                 async def fetch_section(section_id):
-                    for _ in range(15):
+                    for attempt in range(15):
                         async with semaphore:
                             try:
-                                print("Analyse IA pour = ", section_id)
+                                print(f"Analyse IA pour = {section_id} (Essai {attempt + 1}/15)")
                                 return await ai_service.generate_astrology_report(
                                     chart, order.full_name, section_id
                                 )
                             except Exception as e:
-                                if "429" in str(e):
-                                    print("Pause 5 secondes pour éviter le rate limit...")
-                                    await asyncio.sleep(5)
+                                if "429" in str(e) or "rate_limit" in str(e).lower():
+                                    wait_time = 5 + (attempt * 2)
+                                    print(f"Rate limit sur {section_id}. Pause de {wait_time}s...")
+                                    await asyncio.sleep(wait_time)
                                     continue
-                                return None
-                    return None
+                                logger.error(f"Erreur critique section {section_id}: {e}")
+                                raise e
+                    raise Exception(f"Rate limit persistant sur la section {section_id} après 15 essais.")
 
                 tasks = [fetch_section(s) for s in sections]
                 results = await asyncio.gather(*tasks)
 
-                ai_content = {"sections": [r for r in results if r]}
+                ai_content = {"sections": results}
                 await report_repo.update_ai_content_json(report.id, ai_content)
                 await db.commit()
 
@@ -256,9 +274,12 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                 safe_name = order.full_name.replace(" ", "-") if order.full_name else "user"
                 output_filename = f"report-{order.plan_type.lower()}-{safe_name}-{datetime.now().strftime('%Y%m%d')}.pdf"
 
-                pdf_url = await pdf_service.generate_astrological_report(
-                    template_name="premium_report",
-                    data={
+                pdf_url = await loop.run_in_executor(
+                    pdf_pool_executor,
+                    _heavy_pdf_generation_task,
+                    pdf_service,
+                    "premium_report",
+                    {
                         "full_name": order.full_name,
                         "svg_map": svg_map,
                         "birth_chart": chart.get("birth_chart", {}),
@@ -266,7 +287,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                         "birth_date_info": f"{order.birth_date} {order.birth_time}",
                         "forecast": chart.get("forecast", {})
                     },
-                    output_filename=output_filename
+                    output_filename
                 )
 
                 duration = round(loop.time() - start_time, 2)
@@ -293,26 +314,28 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                 raise Exception(email_result.get("message"))
 
             await order_repo.update_status(order.id, OrderStatus.COMPLETED)
-
             await manager.send_update(socket_session_id, {"step": 5, "status": True})
             await manager.send_update(admin_ws, {"order_id": order_id, "status": OrderStatus.COMPLETED})
-
             await db.commit()
 
         except Exception as e:
+            logger.error(f"Échec critique du traitement de la commande {order_id}: {str(e)}")
+            
             try:
                 await db.rollback()
             except Exception:
                 pass
                 
             try:
-                await order_repo.update_status(order_id, OrderStatus.FAILED)
+                query = update(Order).where(Order.id == order_id).values(status=OrderStatus.FAILED)
+                await db.execute(query)
                 await db.commit()
             except Exception as db_err:
-                logger.error(f"Could not set status to FAILED: {db_err}")
+                logger.error(f"Impossible de passer le statut à FAILED en BDD: {db_err}")
 
-            await manager.send_update(socket_session_id, { "step": 1, "status": False, "error": str(e) })
+            try:
+                await manager.send_update(socket_session_id, { "step": 1, "status": False, "error": str(e) })
+                await manager.send_update(admin_ws, { "order_id": order_id, "status": OrderStatus.FAILED })
+            except Exception as ws_err:
+                logger.error(f"Échec envoi WS erreur: {ws_err}")
 
-            await manager.send_update(admin_ws, { "order_id": order_id, "status": OrderStatus.FAILED })
-
-        break

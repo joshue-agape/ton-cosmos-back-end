@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr
 from datetime import datetime, time
 from typing import Optional, List
 from app.models.order import OrderStatus, PlanType
@@ -31,7 +31,6 @@ class OrderCreate(BaseModel):
     amount_total: int
     status: str
 
-
 class OrderResponse(BaseModel):
     id: int
     email: str
@@ -39,6 +38,5 @@ class OrderResponse(BaseModel):
     plan_type: PlanType
     amount_total: int
     created_at: datetime
-
-    class Config:
-        from_attributes = True
+    
+    model_config = ConfigDict(from_attributes=True)

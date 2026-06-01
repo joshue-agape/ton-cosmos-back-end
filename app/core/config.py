@@ -1,6 +1,6 @@
 import json
 from typing import List, Union
-from pydantic import computed_field, field_validator
+from pydantic import computed_field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -67,20 +67,29 @@ class Settings(BaseSettings):
             try:
                 return json.loads(v)
             except json.JSONDecodeError:
-                # Si ce n'est pas du JSON, on sépare par des virgules
                 return [i.strip() for i in v.split(",")]
         return v
-
+    
+    
+    @model_validator(mode="after")
+    def verify_cors_in_production(self) -> "Settings":
+        if self.ENV.lower() == "production":
+            origins = self.CORS_ORIGINS
+            
+            if isinstance(origins, str) and origins == "*":
+                raise ValueError("CORS_ORIGINS ne peut pas être '*' en environnement de production.")
+            
+            if isinstance(origins, list) and "*" in origins:
+                raise ValueError("La liste CORS_ORIGINS ne peut pas contenir '*' en environnement de production.")
+                
+        return self
+    
     # ---------------------------------------------------------
     # DATABASE_URL ASYNC (Utilise asyncpg)
     # ---------------------------------------------------------
     @computed_field
     @property
     def DATABASE_URL(self) -> str:
-        """
-        Génère l'URL de connexion asynchrone pour SQLAlchemy.
-        Note l'utilisation de 'postgresql+asyncpg' au lieu de 'psycopg2'.
-        """
         return (
             f"postgresql+asyncpg://"
             f"{self.DB_USER}:{self.DB_PASSWORD}"
