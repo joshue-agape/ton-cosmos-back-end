@@ -1,5 +1,5 @@
 from typing import List, Optional
-from sqlalchemy import func, select, delete
+from sqlalchemy import func, select, delete, or_
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
@@ -159,3 +159,42 @@ class OrderRepository:
             "failed_deliveries": failed_delivery_count,
             "delivery_rate": delivery_rate
         }
+
+
+    def _apply_filters(self, query, search: Optional[str] = None, status: Optional[str] = None):
+            if status and status != "all":
+                query = query.filter(Order.status == status)
+                
+            if search:
+                search_filter = or_(
+                    Order.full_name.ilike(f"%{search}%"),
+                    Order.email.ilike(f"%{search}%")
+                )
+                if search.isdigit():
+                    search_filter = or_(search_filter, Order.id == int(search))
+                    
+                query = query.filter(search_filter)
+                
+            return query
+        
+
+    async def get_all_with_filter(self, skip: int = 0, limit: int = 100, search: Optional[str] = None, status: Optional[str] = None) -> List[Order]:
+        query = select(Order)
+        
+        query = self._apply_filters(query, search, status)
+        
+        query = (
+            query.order_by(Order.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await self.db.execute(query)
+        return list(result.scalars().all())
+    
+    
+    async def get_total_count(self, search: Optional[str] = None, status: Optional[str] = None) -> int:
+        query = select(func.count(Order.id))
+        query = self._apply_filters(query, search, status)
+        
+        result = await self.db.execute(query)
+        return result.scalar() or 0

@@ -1,3 +1,4 @@
+import sys
 import asyncio
 from logging.config import fileConfig
 
@@ -55,6 +56,8 @@ async def run_migrations_online() -> None:
 if context.is_offline_mode():
     run_migrations_offline()
 else:
+    if sys.platform == "win32":
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     try:
         asyncio.run(run_migrations_online())
     except (KeyboardInterrupt, SystemExit):

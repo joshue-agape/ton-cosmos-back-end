@@ -63,12 +63,16 @@ async def create_order(body: OrderPayload, db: AsyncSession = Depends(get_db)):
 @router.get("/find-all")
 async def get_orders(
     skip: int = 0, 
-    limit: int = 100, 
+    limit: int = 100,
+    search: str | None = None,
+    status: str | None = None,
     db: AsyncSession = Depends(get_db)
 ):
     repo = OrderRepository(db)
-    orders = await repo.get_all(skip=skip, limit=limit)
-    return ServiceResponse.success(data=jsonable_encoder(orders), message="Orders lists")
+    orders = await repo.get_all_with_filter(skip=skip, limit=limit)
+    total = await repo.get_total_count(search=search, status=status)
+    
+    return ServiceResponse.success(data={ "items": jsonable_encoder(orders), "total": total }, message="Orders lists")
 
 
 @router.get("/find-all-with-report")
