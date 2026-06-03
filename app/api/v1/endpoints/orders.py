@@ -170,7 +170,7 @@ async def delete_order(
     try:
         success = await order_repo.delete_by_id(order_id)
         if not success:
-             return ServiceResponse.error(status_code=500, message="Erreur lors de la suppression")
+            return ServiceResponse.error(status_code=500, message="Erreur lors de la suppression")
             
         return ServiceResponse.success(message=f"Commande {order_id} supprimée")
     except Exception as e:
