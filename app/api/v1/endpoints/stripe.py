@@ -1,9 +1,7 @@
 import os
-import time
 import stripe
 import asyncio
 import logging
-import locale
 from sqlalchemy import update
 from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,9 +28,6 @@ from app.schemas.report import ReportCreate
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
-MAX_CPU_WORKERS = max(2, os.cpu_count() or 2)
-pdf_pool_executor = ProcessPoolExecutor(max_workers=MAX_CPU_WORKERS)
-
 # Configuration Stripe
 stripe.api_key = settings.STRIPE_SECRET_KEY
 endpoint_secret = settings.STRIPE_WEBHOOK_SECRET
@@ -51,6 +46,7 @@ class OrderRequest(BaseModel):
     order_id: int
     amount_total: int
     email: str
+
 
 @router.post("/create-checkout-session")
 async def create_checkout(body: OrderRequest):
@@ -152,13 +148,6 @@ async def resend_email(order_id: int, background_tasks: BackgroundTasks, db: Asy
     
     return ServiceResponse.success(message="Le processus de génération et d'envoi a été relancé.")
 
-
-def _heavy_pdf_generation_task(pdf_service_instance, template_name, data, output_filename):
-    return asyncio.run(pdf_service_instance.generate_astrological_report(
-        template_name=template_name,
-        data=data,
-        output_filename=output_filename
-    ))
     
 async def process_order_pipeline(order_id: int, stripe_session_id: str | None = None, resend: bool = False):
     async with SessionLocal() as db:
@@ -274,12 +263,9 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                 safe_name = order.full_name.replace(" ", "-") if order.full_name else "user"
                 output_filename = f"report-{order.plan_type.lower()}-{safe_name}-{datetime.now().strftime('%Y%m%d')}.pdf"
 
-                pdf_url = await loop.run_in_executor(
-                    pdf_pool_executor,
-                    _heavy_pdf_generation_task,
-                    pdf_service,
-                    "premium_report",
-                    {
+                pdf_url = await pdf_service.generate_astrological_report(
+                    template_name="premium_report",
+                    data={
                         "full_name": order.full_name,
                         "svg_map": svg_map,
                         "birth_chart": chart.get("birth_chart", {}),
@@ -287,7 +273,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                         "birth_date_info": f"{order.birth_date} {order.birth_time}",
                         "forecast": chart.get("forecast", {})
                     },
-                    output_filename
+                    output_filename=output_filename
                 )
 
                 duration = round(loop.time() - start_time, 2)

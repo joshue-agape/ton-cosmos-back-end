@@ -99,14 +99,15 @@ class EmailService:
         subject: str, 
         template_name: str, 
         data: Dict[str, Any], 
-        attachment_path: Optional[str] = None
+        attachment_path: Optional[str] = None,
+        use_resend: bool = False
     ) -> Dict[str, Any]:
         try:
             html_content = self._render_template(template_name, data)
         except Exception as e:
             return {"success": False, "message": f"Erreur template: {str(e)}"}
 
-        if settings.RESEND_API_KEY:
+        if settings.RESEND_API_KEY and use_resend:
             try:
                 await self._send_via_resend(to, subject, html_content, attachment_path)
                 return {"success": True, "message": "Email envoyé avec succès via Resend (API)"}
@@ -122,3 +123,4 @@ class EmailService:
         except Exception as e:
             print(f"Unexpected Email Error: {e}")
             return {"success": False, "message": f"Erreur inattendue: {str(e)}"}
+        

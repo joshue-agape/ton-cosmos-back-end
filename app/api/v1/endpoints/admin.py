@@ -352,7 +352,7 @@ async def forgot_password(body: ForgotPayload, background_tasks: BackgroundTasks
 
     await admin_repo.set_reset_token(email=body.email, token=fp_token, expires_at=fp_expire)
 
-    reset_link = f"{settings.FRONTEND_URL}/eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9/YXV0aC9yZXNldC1wYXNzd29yZA?token={fp_token}"
+    reset_link = f"{settings.FRONTEND_URL}/administrator/reset-password?token={fp_token}"
     
     background_tasks.add_task(
         email_service.send_email,
