@@ -1,6 +1,6 @@
 from typing import List, Optional
 from sqlalchemy import func, select, delete, or_
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 from app.models.order import Order, OrderStatus
@@ -13,6 +13,13 @@ class OrderRepository:
         
     async def create(self, order_data: dict) -> Order:
         try:
+            if isinstance(order_data.get("birth_time"), str):
+                t_str = order_data["birth_time"]
+                
+                parts = [int(x) for x in t_str.split(':')]
+                order_data["birth_time"] = time(*parts)
+                db_order = Order(**order_data)
+                
             db_order = Order(**order_data) 
             self.db.add(db_order)
             await self.db.flush() 

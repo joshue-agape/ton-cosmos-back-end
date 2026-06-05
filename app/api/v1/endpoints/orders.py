@@ -23,6 +23,26 @@ from app.services.pdf_service import PDFService
 router = APIRouter()
 jwt_service = JWTService()
 
+class TestChartPayload(BaseModel):
+    birth_date: date
+    birth_time: time
+    timezone: str = "Europe/Paris"
+    latitude: float
+    longitude: float
+
+
+@router.post("/test-chart")
+async def test_chart(body: TestChartPayload):
+    astrology_service = AstrologyService()
+    chart = await astrology_service.get_full_chart(
+        b_date=body.birth_date,
+        b_time=body.birth_time,
+        tz_name=body.timezone,
+        lat=body.latitude,
+        lon=body.longitude
+    )
+    return chart
+
 
 @router.websocket("/ws/admin-order-event")
 async def websocket_endpoint_for_check_new_event(websocket: WebSocket):
@@ -41,12 +61,20 @@ async def create_order(body: OrderPayload, db: AsyncSession = Depends(get_db)):
     
     amount = 990 if body.plan_type == PlanType.ESSENTIEL else 1990
     
+    birth_time_obj = body.birth_time
+    if isinstance(birth_time_obj, str):
+        birth_time_obj = datetime.strptime(birth_time_obj, "%H:%M").time()
+        
     # Création asynchrone
-    order = await order_repo.create({
-        **body.dict(),
+    order_data = body.dict()
+    order_data.update({
+        "birth_time": birth_time_obj,
         "amount_total": amount,
         "status": OrderStatus.PENDING_PAYMENT
     })
+    
+    # Création asynchrone
+    order = await order_repo.create(order_data)
     
     data_json = jsonable_encoder(order)
     

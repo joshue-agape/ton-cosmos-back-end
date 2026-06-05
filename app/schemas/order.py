@@ -1,13 +1,14 @@
 from pydantic import BaseModel, ConfigDict, EmailStr
-from datetime import datetime, time
+from datetime import date, datetime, time
 from typing import Optional, List
 from app.models.order import OrderStatus, PlanType
 
 class OrderPayload(BaseModel):
     email: EmailStr
     full_name: str
-    birth_date: datetime
-    birth_time: Optional[time] = None
+    birth_date: date
+    birth_time: time
+    timezone: str
     birth_city: str
     latitude: float
     longitude: float
@@ -22,8 +23,9 @@ class PaidPayload(BaseModel):
 class OrderCreate(BaseModel):
     email: EmailStr
     full_name: str
-    birth_date: datetime
-    birth_time: Optional[str] = None
+    birth_date: date
+    birth_time: time
+    timezone: str
     birth_city: str
     latitude: float
     longitude: float

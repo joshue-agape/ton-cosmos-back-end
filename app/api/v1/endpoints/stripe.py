@@ -3,7 +3,7 @@ import stripe
 import asyncio
 import logging
 from sqlalchemy import update
-from datetime import datetime
+from datetime import datetime, time, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
 from concurrent.futures import ProcessPoolExecutor
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, WebSocket, WebSocketDisconnect, Request, Response
@@ -113,16 +113,23 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks):
     metadata = session.get("metadata", {})
     order_id = metadata.get("order_id")
     payment_status = session.get("payment_status")
+    amount_paid = session.get("amount_total")
 
-    logger.info(f"DEBUG: Session={session_id} | Order={order_id} | Status={payment_status}")
+    logger.info(f"DEBUG: Session={session_id} | Order={order_id} | Status={payment_status} | Amount={amount_paid}")
+    
+    VALID_AMOUNTS = {990, 1990}
 
     if not session_id or not order_id:
         logger.warning("Missing data: session_id or order_id in metadata")
         return {"status": "error", "message": "Missing order_id in metadata"}
 
     if payment_status != "paid":
-        logger.info(f"Paiement non finalisé (Status: {payment_status})")
+        logger.info(f"Paiement non finalisé. Status: {payment_status}")
         return {"status": "not_paid"}
+
+    if amount_paid not in VALID_AMOUNTS:
+        logger.warning(f"Montant incohérent pour la commande {order_id}. Reçu: {amount_paid}")
+        return {"status": "invalid_amount"}
 
     try:
         logger.info(f"Validation commande {order_id} lancée en arrière-plan...")
@@ -195,12 +202,11 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
             chart = report.astral_data_json
 
             if not chart:
-                birth_dt = order.birth_date.replace(tzinfo=None)
-                if order.birth_time:
-                    birth_dt = datetime.combine(birth_dt.date(), order.birth_time)
-
+                tz_name = order.timezone or "UTC"
                 chart = await astrology_service.get_full_chart(
-                    birth_date=birth_dt,
+                    b_date=order.birth_date,
+                    b_time=order.birth_time or time(12, 0),
+                    tz_name=tz_name,
                     lat=order.latitude,
                     lon=order.longitude
                 )

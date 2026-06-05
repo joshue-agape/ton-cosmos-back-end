@@ -70,6 +70,7 @@ app.add_middleware(
         "/api/v1/admin/reset-password",
         "/api/v1/admin/forgot-password",
         "/api/v1/admin/verify-reset-token",
+        "/api/v1/order/test-chart",
         "/api/v1/order/create",
         "/api/v1/stripe/create-checkout-session",
         "/api/v1/stripe/webhook"

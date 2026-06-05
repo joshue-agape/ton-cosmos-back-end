@@ -1,5 +1,5 @@
 import enum
-from sqlalchemy import Column, Integer, String, DateTime, Time, Enum as SqlEnum, Float
+from sqlalchemy import Column, Integer, String, Date, Time, Enum as SqlEnum, Float, DateTime
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database.base import Base
@@ -28,8 +28,9 @@ class Order(Base):
     full_name = Column(String(255), nullable=False)
     
     # Données natales pour le rapport
-    birth_date = Column(DateTime, nullable=False)
+    birth_date = Column(Date, nullable=False)
     birth_time = Column(Time, nullable=True)
+    timezone = Column(String(50), nullable=False, default="UTC")
     birth_city = Column(String(250), nullable=False)
     
     # Coordonnées géographiques pour calcul astral
