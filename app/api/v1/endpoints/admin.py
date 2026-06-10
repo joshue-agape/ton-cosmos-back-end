@@ -41,41 +41,30 @@ async def login(body: LoginPayload, request: Request, response: Response, db: As
     if not admin:
         return ServiceResponse.error(message="Email invalide", status_code=401, data={"error": "email"})
     
-    now = datetime.now(timezone.utc) if admin.locked_until and admin.locked_until.tzinfo else datetime.now()
+    now = datetime.now(timezone.utc)
     if admin.locked_until and admin.locked_until > now:
         remaining_time = ceil((admin.locked_until - now).total_seconds() / 60)
         return ServiceResponse.error(
-            message=f"Compte temporairement bloqué (Origine: {admin.failed_attempts_ip}). Réessaie dans {remaining_time} minute(s).", 
+            message=f"Compte bloqué. Réessaie dans {remaining_time} minute(s).", 
             status_code=423, 
             data={"error": "locked"}
         )
         
     if not password_service.verify_password(body.password, admin.hashed_password):
         await admin_repo.increment_failed_attempts(body.email)
-        current_attempts = admin.failed_attempts + 1
-        if current_attempts >= MAX_FAILED_ATTEMPTS:
+        new_attempts = admin.failed_login_attempts + 1
+        if new_attempts >= MAX_FAILED_ATTEMPTS:
             lock_target = now + timedelta(minutes=LOCK_TIME_MINUTES)
-            
             await admin_repo.lock_account(admin.id, lock_target, current_ip)
             await db.commit()
-            
-            logger.warning(f"CRITICAL: Compte {body.email} BLOQUÉ pour {LOCK_TIME_MINUTES}min. Cause: 5 échecs depuis l'IP {current_ip}")
-            
-            return ServiceResponse.error(
-                message=f"Trop de tentatives. Compte bloqué pour {LOCK_TIME_MINUTES} minutes.", 
-                status_code=423, 
-                data={"error": "locked"}
-            )
+            return ServiceResponse.error(message="Trop de tentatives. Compte bloqué.", status_code=423, data={"error": "locked"})
             
         await db.commit()
         return ServiceResponse.error(message="Mot de passe incorrect", status_code=401, data={"error": "password"})
     
     # Mise à jour des stats de login
-    await admin_repo.update_login_stats(
-        admin_id=admin.id,
-        device=device.get("device"),
-        ip=device.get("IP")
-    )
+    await admin_repo.reset_failed_attempts(admin.id)
+    await admin_repo.update_login_stats(admin.id, current_ip, device.get("device"))
     await db.commit()
 
     access_token = jwt_service.create_access_token(
@@ -128,88 +117,31 @@ async def logout(request: Request, response: Response, db: AsyncSession = Depend
             httponly=True,
             samesite="lax" if settings.ENV == "development" else "none",
         )
-
+        
     auth_header = request.headers.get("Authorization")
-
-    if not auth_header or not auth_header.startswith("Bearer "):
-        clear_cookie()
-        return ServiceResponse.error("Missing access token", 401)
-
-    access_token = auth_header.split(" ")[1]
-
-    access_payload = None
-
-    try:
-        access_payload = jwt.decode(
-            access_token,
-            settings.JWT_SECRET_KEY,
-            algorithms=["HS256"]
-        )
-    except (ExpiredSignatureError, JWTError):
-        access_payload = None
-
-    if access_payload and access_payload.get("type") == "access":
-        exp = datetime.fromtimestamp(access_payload["exp"], tz=timezone.utc)
-
-        await token_service.revoke_token(
-            user_id=int(access_payload["sub"]),
-            token=access_token,
-            token_type="access",
-            exp=exp
-        )
-
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header.split(" ")[1]
+        try:
+            payload = jwt.decode(token, settings.JWT_SECRET_KEY, algorithms=["HS256"])
+            if payload.get("type") == "access":
+                exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+                await token_service.revoke_token(int(payload["sub"]), token, "access", exp)
+        except Exception:
+            pass
+        
     refresh_token = request.cookies.get("refresh_token")
-
-    if not refresh_token:
-        clear_cookie()
-        return ServiceResponse.success(
-            message="Already logged out",
-            status_code=200
-        )
-
-    try:
-        refresh_payload = jwt.decode(
-            refresh_token,
-            settings.JWT_SECRET_KEY,
-            algorithms=["HS256"],
-            options={"verify_signature": False}
-        )
-    except Exception:
-        clear_cookie()
-        return ServiceResponse.success("Logged out")
-
-    if refresh_payload.get("type") != "refresh":
-        clear_cookie()
-        return ServiceResponse.error("Invalid token type", 401)
-
-    user_id = int(refresh_payload.get("sub"))
-    exp = datetime.fromtimestamp(refresh_payload.get("exp"), tz=timezone.utc)
-
-    user = await admin_repo.get_by_id(user_id)
-
-    if not user:
-        clear_cookie()
-        return ServiceResponse.success("Logged out")
-
-    try:
-        jwt.decode(
-            refresh_token,
-            user.client_secret,
-            algorithms=["HS256"]
-        )
-    except (JWTError, ExpiredSignatureError):
-        clear_cookie()
-        return ServiceResponse.success("Logged out")
-
-    is_revoked = await token_service.is_token_revoked(refresh_token)
-
-    if not is_revoked:
-        await token_service.revoke_token(
-            user_id=user.id,
-            token=refresh_token,
-            token_type="refresh",
-            exp=exp
-        )
+    if refresh_token:
+        try:
+            payload = jwt.decode(refresh_token, options={"verify_signature": False})
+            user = await admin_repo.get_by_id(int(payload.get("sub")))
+            
+            if user:
+                jwt.decode(refresh_token, user.client_secret, algorithms=["HS256"])
+                
+                exp = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+                await token_service.revoke_token(user.id, refresh_token, "refresh", exp)
+        except Exception:
+            pass
 
     clear_cookie()
 
@@ -225,108 +157,49 @@ async def refresh_token_route(request: Request, response: Response, db: AsyncSes
     admin_repo = AdminRepository(db)
     token_repo = TokenRepository(db)
     token_service = TokenService(token_repo)
-
-    auth_header = request.headers.get("Authorization")
-
-    if not auth_header or not auth_header.startswith("Bearer "):
-        return ServiceResponse.error("Missing access token", 401)
-
-    access_token = auth_header.split(" ")[1]
-
-    access_payload = None
-    access_expired = False
-
-    try:
-        access_payload = jwt.decode(
-            access_token,
-            settings.JWT_SECRET_KEY,
-            algorithms=["HS256"]
-        )
-    except ExpiredSignatureError:
-        access_expired = True
-    except JWTError:
-        access_expired = True
-
-    if access_payload and not access_expired:
-        return ServiceResponse.success(
-            message="Access token still valid",
-            data={"access_token": access_token}
-        )
-
+    
     refresh_token = request.cookies.get("refresh_token")
-
     if not refresh_token:
         return ServiceResponse.error("Refresh token missing", 401)
 
     try:
-        refresh_payload = jwt.decode(
-            refresh_token,
-            settings.JWT_SECRET_KEY,
-            algorithms=["HS256"],
-            options={"verify_signature": False}
-        )
-    except Exception:
-        return ServiceResponse.error("Invalid refresh token", 401)
+        payload = jwt.decode(refresh_token, options={"verify_signature": False})
+        user = await admin_repo.get_by_id(int(payload.get("sub")))
+        if not user:
+            return ServiceResponse.error("User not found", 404)
+        
+        jwt.decode(refresh_token, user.client_secret, algorithms=["HS256"])
+        
+        if await token_service.is_token_revoked(refresh_token):
+            response.delete_cookie("refresh_token", path="/")
+            return ServiceResponse.error("Session revoked", 401)
 
-    if refresh_payload.get("type") != "refresh":
-        return ServiceResponse.error("Invalid token type", 401)
-
-    user_id = int(refresh_payload.get("sub"))
-
-    user = await admin_repo.get_by_id(user_id)
-
-    if not user:
-        return ServiceResponse.error("User not found", 404)
-
-    try:
-        refresh_payload = jwt.decode(
-            refresh_token,
-            user.client_secret,
-            algorithms=["HS256"]
-        )
-    except ExpiredSignatureError:
-        return ServiceResponse.error("Session expired (refresh token)", 401)
-    except JWTError:
-        return ServiceResponse.error("Invalid refresh token", 401)
-
-    is_revoked = await token_service.is_token_revoked(refresh_token)
-    if is_revoked:
-        response.delete_cookie("refresh_token", path="/")
-        return ServiceResponse.error("Session revoked", 401)
-
-    new_access = jwt_service.create_access_token(
-        user_id=user.id,
-        email=user.email
-    )
-
+    except (JWTError, ExpiredSignatureError):
+        return ServiceResponse.error("Invalid or expired session", 401)
+    
+    new_access = jwt_service.create_access_token(user_id=user.id, email=user.email)
+    
+    exp_dt = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
     new_refresh = jwt_service.create_new_refresh_token(
         user_id=user.id,
         email=user.email,
         secret_key=user.client_secret,
-        expire=datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
-    )
-
-    await token_service.revoke_token(
-        user_id=user.id,
-        token=refresh_token,
-        token_type="refresh",
-        exp=datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
+        expire=exp_dt
     )
     
-    expire_dt = datetime.fromtimestamp(refresh_payload["exp"], tz=timezone.utc)
-    max_age = int((expire_dt - datetime.now(timezone.utc)).total_seconds())
-
+    await token_service.revoke_token(user.id, refresh_token, "refresh", exp_dt)
+    
+    max_age = int((exp_dt - datetime.now(timezone.utc)).total_seconds())
     response.set_cookie(
         key="refresh_token",
         value=new_refresh,
         httponly=True,
         secure=settings.ENV == "production",
-        samesite="lax" if settings.ENV == "development" else "none",
+        samesite="none" if settings.ENV == "production" else "lax",
         max_age=max_age,
-        expires=expire_dt,
         path="/"
     )
-
+    
     return {
         "success": True,
         "message": "Token refreshed",
