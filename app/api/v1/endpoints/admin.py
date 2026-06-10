@@ -163,7 +163,7 @@ async def refresh_token_route(request: Request, response: Response, db: AsyncSes
         return ServiceResponse.error("Refresh token missing", 401)
 
     try:
-        payload = jwt.decode(refresh_token, options={"verify_signature": False})
+        payload = jwt.decode(refresh_token, key=None, options={"verify_signature": False})
         user = await admin_repo.get_by_id(int(payload.get("sub")))
         if not user:
             return ServiceResponse.error("User not found", 404)
