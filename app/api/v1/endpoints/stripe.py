@@ -300,7 +300,7 @@ async def process_order_pipeline(order_id: int, stripe_session_id: str | None = 
                     "current_year": datetime.now().year
                 },
                 attachment_path=file_path,
-                use_resend=True
+                use_resend=False
             )
 
             if not email_result.get("success"):
