@@ -38,8 +38,8 @@ class StripeService:
                         "quantity": 1,
                     }
                 ],
-                success_url=f"{settings.FRONTEND_URL}/landing/payments-success?session_id={{CHECKOUT_SESSION_ID}}&order_id={order_id}",
-                cancel_url=f"{settings.FRONTEND_URL}/landing",
+                success_url=f"{settings.FRONTEND_URL}/payments-success?session_id={{CHECKOUT_SESSION_ID}}&order_id={order_id}",
+                cancel_url=f"{settings.FRONTEND_URL}/payments",
             )
             return session
         
